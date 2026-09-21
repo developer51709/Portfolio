@@ -72,7 +72,7 @@ for i,t in enumerate(lib):
       continue
   with open(os.path.join(md, f"{i:04d}.json"),"w") as f:
     json.dump({"title":t.get("title",""),"artist":t.get("artist",""),"credit":t.get("credit","")}, f)
-  with open(pf,"a") as f: print(f"file '{out}'", file=f)
+  with open(pf,"a") as f: print(os.path.abspath(out), file=f)
 DL
   grep -c "^file " "$PLAYLIST" 2>/dev/null || echo 0
 }
@@ -172,8 +172,12 @@ while :; do
   if [ "\${TRACK_COUNT}" -gt 0 ]; then
     IDX=0
     while IFS= read -r line; do
-      TRACK_URL="\${line#file '}"
-      TRACK_URL="\${TRACK_URL%'}"
+      TRACK_URL="\${line}"
+      if [ ! -f "\${TRACK_URL}" ]; then
+        echo "Skipping missing downloaded track: \${TRACK_URL}"
+        IDX=\$((IDX + 1))
+        continue
+      fi
       play_track "\${TRACK_URL}" "\${IDX}"
       if [ "\${RESTART_REQUESTED}" -eq 1 ]; then break; fi
       IDX=\$((IDX + 1))
