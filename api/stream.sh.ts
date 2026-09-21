@@ -7,7 +7,7 @@ API="${origin}/api/lofi"
 WORK="$(mktemp -d -t lofi.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT INT TERM
 need(){ command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1"; exit 1; }; }
-need curl; need ffmpeg; need python3
+need curl; need ffmpeg; need ffprobe; need python3
 
 # ── Authentication ────────────────────────────────────────────────
 read -rsp "Lofi admin phrase: " PHRASE; echo
@@ -41,7 +41,10 @@ SAFE_TEXT=""
 SAFE_CREDIT=""
 OVERLAY_FILE="$WORK/overlay.txt"
 CREDIT_FILE="$WORK/credit.txt"
+TRACK_LABEL_FILE="$WORK/track-label.txt"
 TRACK_VERSION=""
+LABEL_PID=""
+: > "$TRACK_LABEL_FILE"
 
 [ -n "$RTMP" ] && [ -n "$KEY" ] || { echo "Configure the Twitch RTMP URL and stream key in the admin page first."; exit 1; }
 
@@ -113,7 +116,69 @@ PY
 }
 
 build_filters(){
-  printf '%s' "drawbox=x=0:y=ih-120:w=iw:h=120:color=black@0.55:t=fill,drawtext=textfile=\${OVERLAY_FILE}:reload=1:fontcolor=white:fontsize=36:x=40:y=h-100:font=Sans:borderw=2:bordercolor=black@0.6,drawtext=textfile=\${CREDIT_FILE}:reload=1:fontcolor=white@0.7:fontsize=22:x=40:y=h-55:font=Sans:borderw=1:bordercolor=black@0.4"
+  printf '%s' "drawbox=x=0:y=ih-120:w=iw:h=120:color=black@0.55:t=fill,drawtext=textfile=\${OVERLAY_FILE}:reload=1:fontcolor=white:fontsize=36:x=40:y=h-100:font=Sans:borderw=2:bordercolor=black@0.6,drawtext=textfile=\${CREDIT_FILE}:reload=1:fontcolor=white@0.7:fontsize=22:x=40:y=h-55:font=Sans:borderw=1:bordercolor=black@0.4,drawtext=textfile=\${TRACK_LABEL_FILE}:reload=1:fontcolor=white:fontsize=28:x=w-tw-40:y=h-95:font=Sans:borderw=2:bordercolor=black@0.5"
+}
+
+start_track_label_updater(){
+  : > "\${TRACK_LABEL_FILE}"
+  python3 - "\${PLAYLIST}" "\${META_DIR}" "\${TRACK_LABEL_FILE}" <<'LABELS' &
+import json, os, subprocess, sys, time
+playlist, meta_dir, label_file = sys.argv[1:]
+
+def paths():
+    result = []
+    try:
+        with open(playlist) as f:
+            for line in f:
+                line = line.rstrip('\\n')
+                if line.startswith("file '") and line.endswith("'"):
+                    result.append(line[6:-1])
+    except OSError:
+        pass
+    return result
+
+def write_label(value):
+    temp = label_file + '.tmp'
+    with open(temp, 'w') as f:
+        f.write(value)
+    os.replace(temp, label_file)
+
+while True:
+    current = paths()
+    if not current:
+        time.sleep(1)
+        continue
+    for path in current:
+        if not os.path.isfile(path):
+            continue
+        stem = os.path.splitext(os.path.basename(path))[0]
+        try:
+            with open(os.path.join(meta_dir, stem + '.json')) as f:
+                meta = json.load(f)
+        except (OSError, ValueError):
+            meta = {}
+        title = str(meta.get('title', '')).strip()
+        artist = str(meta.get('artist', '')).strip()
+        label = title + (' — ' + artist if artist else '')
+        write_label(label)
+        try:
+            duration = float(subprocess.check_output([
+                'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1', path
+            ], text=True, stderr=subprocess.DEVNULL).strip())
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            duration = 180.0
+        time.sleep(max(1.0, duration))
+LABELS
+  LABEL_PID=$!
+}
+
+stop_track_label_updater(){
+  if [ -n "\${LABEL_PID}" ]; then
+    kill "\${LABEL_PID}" 2>/dev/null || true
+    wait "\${LABEL_PID}" 2>/dev/null || true
+    LABEL_PID=""
+  fi
 }
 
 # ── Restart FFmpeg only when the track playlist changes ───────────
@@ -139,11 +204,13 @@ run_ffmpeg(){
   done
   wait "$FFMPEG_PID" 2>/dev/null || true
   FFMPEG_PID=""
+  stop_track_label_updater
 }
 
 # ── Play the complete playlist in one continuous stream ───────────
 play_playlist(){
   write_overlay_files
+  start_track_label_updater
   local FILTERS
   FILTERS=\$(build_filters)
 
@@ -187,7 +254,7 @@ while :; do
 
   if [ "\${TRACK_COUNT}" -gt 0 ]; then
     # Keep one FFmpeg/RTMP session alive across every track transition.
-    # run_ffmpeg interrupts this process only when the admin config changes.
+    # run_ffmpeg interrupts this process only when the playlist changes.
     play_playlist
   else
     # No tracks — play with silence and overlay
