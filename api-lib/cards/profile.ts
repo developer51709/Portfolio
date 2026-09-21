@@ -1,12 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import about from './about';
-import activityGraph from './activity-graph';
-import banner from './banner';
-import contact from './contact';
-import stack from './stack';
-import stats from './stats';
-import streak from './streak';
-import topLangs from './top-langs';
+import about from './about.js';
+import activityGraph from './activity-graph.js';
+import banner from './banner.js';
+import contact from './contact.js';
+import stack from './stack.js';
+import stats from './stats.js';
+import streak from './streak.js';
+import topLangs from './top-langs.js';
 
 type Handler = (req: VercelRequest, res: VercelResponse) => unknown;
 type Captured = { body: string; status: number };
