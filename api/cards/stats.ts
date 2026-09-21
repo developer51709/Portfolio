@@ -7,7 +7,6 @@ function cached<T>(k: string): T | null { const e = cache.get(k); if (e && e.exp
 function store(k: string, v: unknown) { cache.set(k, { data: v, expires: Date.now() + CACHE_TTL }); }
 function ghHeaders(t?: string) { return { Accept: 'application/vnd.github+json', ...(t ? { Authorization: `Bearer ${t}` } : {}) }; }
 function esc(s: string) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-function trunc(s: string, max = 14) { return s.length > max ? s.slice(0, max - 1) + '…' : s; }
 function num(n: number) { if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'm'; if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k'; return String(n); }
 
 const FF = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";

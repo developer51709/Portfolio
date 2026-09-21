@@ -1,7 +1,9 @@
 # Twitch Lofi control plane
 
-The portfolio now hosts the Twitch Lofi control plane at `#/admin` and the
-external FFmpeg bootstrap script at `/api/stream.sh`.
+The portfolio hosts the Twitch Lofi control plane at the unlinked private path
+`/control-plane/lofi` and the external FFmpeg bootstrap script at
+`/api/stream.sh`. It is deliberately not part of the public hash router or
+navigation.
 
 ## Required server configuration
 
@@ -17,7 +19,10 @@ to the Supabase project used by the deployment before opening the admin page.
 
 ## Usage
 
-1. Open `https://sorenthedev.indevs.in/#/admin`.
+1. Open the private path `https://sorenthedev.indevs.in/control-plane/lofi`.
+   It is not linked from the public portfolio. The API authentication remains
+   the actual security boundary; the hidden path is only a routing/privacy
+   measure.
 2. Sign in with the admin phrase.
 3. Configure the Twitch RTMP destination, stream key, background video, and
    playback settings.

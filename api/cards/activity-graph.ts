@@ -169,7 +169,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             body: JSON.stringify({ query: `query($u:String!,$f:String!,$t:String!){user(login:$u){contributionsCollection(from:$f,to:$t){contributionCalendar{totalContributions weeks{contributionDays{date contributionCount}}}}}}`, variables: { u: username, f: from + 'T00:00:00Z', t: to + 'T23:59:59Z' } }),
           });
           if (gql.ok) {
-            const body = await gql.json() as { data?: { user?: { contributionsCollection?: { contributionCalendar?: { totalContributions: number; weeks: { contributionDays: { date: string; contributionCount: number }[] }[] } } } };
+            const body = await gql.json() as {
+              data?: {
+                user?: {
+                  contributionsCollection?: {
+                    contributionCalendar?: {
+                      totalContributions: number;
+                      weeks: { contributionDays: { date: string; contributionCount: number }[] }[];
+                    };
+                  };
+                };
+              };
+            };
             const cal = body?.data?.user?.contributionsCollection?.contributionCalendar;
             if (cal && Array.isArray(cal.weeks)) {
               total = cal.totalContributions;

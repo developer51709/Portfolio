@@ -191,7 +191,6 @@ const H = 560;
 function bannerSvg(
   usernameClean: string,
   avatarDataUri: string | null,
-  avatarType: 'data' | 'url' | null,
   langs: Lang[],
   repos: Repo[],
   stats: { stars: number; followers: number; following: number; repos: number },
@@ -234,7 +233,6 @@ function bannerSvg(
   </g>`;
 
   const aboutX = 48;
-  const leftColW = 540;
   const smallLabelRow = `<text x="${String(aboutX)}" y="252" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif" font-size="11" font-weight="600" letter-spacing="3" fill="#6b7280">about</text>`;
   const bioLines = wrapWords(PROFILE.tagline, 56);
   const bio = bioLines
@@ -423,7 +421,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Cacheable + width-controlled: let GitHub proxy and Vercel cache it; clients revalidate after 30 min.
   // No private data exposed — only public repo counts, follows, and language distribution.
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  return res.send(bannerSvg(username, avatarDataUri, null, langs, repos, counts));
+  return res.send(bannerSvg(username, avatarDataUri, langs, repos, counts));
 }
 
 function errSvg(msg: string) {

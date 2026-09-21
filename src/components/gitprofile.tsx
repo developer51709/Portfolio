@@ -41,7 +41,9 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
  *   sponsor      -> OxaPay donation page
  *   terms        -> Commission terms of service
  *   privacy      -> Commission privacy policy
- *   admin        -> Protected Twitch Lofi control plane
+ *
+ * The Lofi control plane is intentionally outside this public hash router at
+ * /control-plane/lofi and is not linked from the portfolio.
  */
 const GitProfile = ({ config }: { config: Config }) => {
   const [sanitizedConfig] = useState<SanitizedConfig | Record<string, never>>(
@@ -184,6 +186,12 @@ const GitProfile = ({ config }: { config: Config }) => {
   };
 
   const pageRoute = route as PageRoute;
+  const isPrivateLofiRoute =
+    typeof window !== 'undefined' && window.location.pathname === '/control-plane/lofi';
+
+  if (isPrivateLofiRoute) {
+    return <LofiAdmin onBack={() => { window.location.href = '/'; }} />;
+  }
 
   return (
     <div className="fade-in min-h-screen">
@@ -198,7 +206,7 @@ const GitProfile = ({ config }: { config: Config }) => {
         />
       ) : (
         <>
-          {!['sponsor', 'terms', 'privacy', 'admin'].includes(pageRoute) && (
+          {!['sponsor', 'terms', 'privacy'].includes(pageRoute) && (
             <SponsorButton onClick={() => navigate('sponsor')} />
           )}
 
@@ -284,11 +292,9 @@ const GitProfile = ({ config }: { config: Config }) => {
                 <LegalPage document={TERMS_DOC} onBack={() => navigate('')} />
               )}
 
-                  {pageRoute === 'privacy' && (
+              {pageRoute === 'privacy' && (
                 <LegalPage document={PRIVACY_DOC} onBack={() => navigate('')} />
               )}
-
-              {pageRoute === 'admin' && <LofiAdmin onBack={() => navigate('')} />}
             </PageLayout>
           )}
         </>

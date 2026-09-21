@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelResponse } from '@vercel/node';
 
 const GITHUB_API = 'https://api.github.com';
 const cache = new Map<string, { data: unknown; expires: number }>();

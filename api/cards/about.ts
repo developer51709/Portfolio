@@ -37,7 +37,6 @@ const HIGHLIGHTS: Array<{ label: string; value: string; accent: string; icon: ke
 function aboutSvg(usernameClean: string) {
   const handle = `@${usernameClean}`;
   const badge = 'About';
-  const CHA = 7.2;
   const pw = Math.round(12 + handle.length * 6.2 + 8 + badge.length * 6.2 + 12);
 
   const bioLines = (() => {

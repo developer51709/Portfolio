@@ -14,8 +14,7 @@ export type PageRoute =
   | 'commissions'
   | 'sponsor'
   | 'terms'
-  | 'privacy'
-  | 'admin';
+  | 'privacy';
 
 export const NAV_ITEMS: { label: string; route: PageRoute; icon: ReactNode }[] =
   [
