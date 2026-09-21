@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { bootstrapLofiSchema, pgQuery } from '../api-lib/lofi-schema.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -19,9 +18,6 @@ type Settings = JsonRecord & {
 };
 
 function supabaseConfig() {
-  // These are the server-side names used by the Vercel Supabase integration.
-  // Keep the NEXT_PUBLIC URL fallback for projects provisioned from the
-  // Supabase starter integration, which exposes the same project URL there.
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
   if (!url || !key) {
@@ -99,7 +95,6 @@ function json(res: VercelResponse, value: unknown, status = 200) {
 let schemaBootstrapPromise: Promise<void> | null = null;
 
 async function settings() {
-  // Try the REST API first (fast path)
   try {
     const result = await rows<Settings>('settings?id=eq.1&select=*');
     if (result[0]) return result[0];
@@ -107,21 +102,31 @@ async function settings() {
     if (!(error instanceof Error) || !error.message.includes('Supabase Lofi schema is missing')) throw error;
   }
 
-  // Table missing via REST — run schema bootstrap, then read via pg directly
-  schemaBootstrapPromise ??= bootstrapLofiSchema();
+  // Schema missing via REST — lazy-load pg to bootstrap, then retry REST
+  schemaBootstrapPromise ??= (async () => {
+    const { bootstrapLofiSchema } = await import('../api-lib/lofi-schema.js');
+    await bootstrapLofiSchema();
+  })();
   await schemaBootstrapPromise;
 
-  // Read settings via direct Postgres connection (bypasses REST API caching)
-  const pgRows = await pgQuery<Settings>('select * from public.settings where id = 1');
-  if (pgRows[0]) return pgRows[0];
+  // Give PostgREST time to reload schema cache after NOTIFY
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
-  // Settings row doesn't exist yet — insert it via pg
+  // Retry REST API now that tables exist and PostgREST has reloaded
+  const retry = await rows<Settings>('settings?id=eq.1&select=*');
+  if (retry[0]) return retry[0];
+
+  // Insert default settings row via REST
   const adminSecret = process.env.LOFI_ADMIN_SECRET;
-  await pgQuery(`insert into public.settings (id, secret_phrase) values (1, ${adminSecret ? "'" + adminSecret.replace(/'/g, "''") + "'" : "'change-me-now'"}) on conflict (id) do nothing`);
+  await db('settings', {
+    method: 'POST',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify({ id: 1, secret_phrase: adminSecret || 'change-me-now' }),
+  });
 
-  const inserted = await pgQuery<Settings>('select * from public.settings where id = 1');
-  if (!inserted[0]) throw new Error('Lofi settings could not be initialized after schema setup.');
-  return inserted[0];
+  const bootstrapped = await rows<Settings>('settings?id=eq.1&select=*');
+  if (!bootstrapped[0]) throw new Error('Lofi settings could not be initialized after schema setup.');
+  return bootstrapped[0];
 }
 
 function publicSettings(value: Settings): Settings {
@@ -198,7 +203,7 @@ async function adminData() {
     rows<JsonRecord>('ads?select=*&order=created_at.desc&limit=200'),
     rows<JsonRecord>('donations?select=id,amount,currency,donor_name,message,status,created_at&order=created_at.desc&limit=50'),
     rows<JsonRecord>('logs?select=id,level,source,message,created_at&order=created_at.desc&limit=80'),
-    rows<JsonRecord>('tracks?select=id,title,artist,credit,duration_seconds,sort_order,storage_path,created_at&active=eq.true&order=sort_order.asc,created_at.asc&limit=500'),
+    rows<JsonRecord>('tracks?select=id,title,artist,credit,duration_seconds,sort_order,storage_path,active,created_at&order=sort_order.asc,created_at.asc&limit=500'),
   ]);
   return { settings: publicSettings(config), secrets_configured: Boolean(config.secret_phrase && config.oxapay_merchant_key), ads, donations, logs, tracks };
 }
@@ -206,7 +211,8 @@ async function adminData() {
 async function configForHost(req: VercelRequest, token: string) {
   const config = await settings();
   const host = origin(req);
-  const ads = await rows<JsonRecord>(`ads?status=eq.approved&start_time=lte.${encodeURIComponent(new Date().toISOString())}&select=id,advertiser_name,banner_url,click_url,duration_seconds,start_time,end_time&order=start_time.asc`);
+  const now = new Date().toISOString();
+  const ads = await rows<JsonRecord>(`ads?status=eq.approved&start_time=lte.${encodeURIComponent(now)}&select=id,advertiser_name,banner_url,click_url,duration_seconds,start_time,end_time&order=start_time.asc`);
   const tracks = await rows<JsonRecord>('tracks?active=eq.true&select=id,title,artist,credit,duration_seconds,sort_order&order=sort_order.asc,created_at.asc&limit=500');
   const track = { ...((config.track_metadata as JsonRecord | undefined) ?? {}) };
   if (tracks.length) {
@@ -301,12 +307,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const sort_order = typeof input.sort_order === 'number' ? Math.floor(input.sort_order) : 0;
       if (!title) return json(res, { error: 'Title is required' }, 400);
       if (!storage_path) return json(res, { error: 'Storage path is required' }, 400);
-      const inserted = await db('tracks', {
+      const response = await db('tracks', {
         method: 'POST',
         headers: { Prefer: 'return=representation' },
         body: JSON.stringify({ title, artist, storage_path, credit, duration_seconds, sort_order, active: true }),
       });
-      const rows = await inserted.json() as JsonRecord[];
+      const rows = await response.json() as JsonRecord[];
       return json(res, { ok: true, track: rows[0] ?? null });
     }
     if (action === 'track_update' && req.method === 'POST') {
