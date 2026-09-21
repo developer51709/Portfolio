@@ -72,7 +72,7 @@ for i,t in enumerate(lib):
       continue
   with open(os.path.join(md, f"{i:04d}.json"),"w") as f:
     json.dump({"title":t.get("title",""),"artist":t.get("artist",""),"credit":t.get("credit","")}, f)
-  with open(pf,"a") as f: f.write(f"file '{out}'\\n")
+  with open(pf,"a") as f: print(f"file '{out}'", file=f)
 DL
   grep -c "^file " "$PLAYLIST" 2>/dev/null || echo 0
 }
@@ -148,7 +148,7 @@ while :; do
   if [ "\${TRACK_COUNT}" -gt 0 ]; then
     IDX=0
     while IFS= read -r line; do
-      TRACK_URL=\$(printf '%s' "\$line" | sed "s/^file '//; s/'\$//")
+      TRACK_URL=\$(printf '%s' "\$line" | python3 -c "import sys; line=sys.stdin.read().strip(); print(line[6:-1] if line.startswith(\"file '\") and line.endswith(\"'\") else line)")
       play_track "\${TRACK_URL}" "\${IDX}"
       IDX=\$((IDX + 1))
     done < "\${PLAYLIST}"
