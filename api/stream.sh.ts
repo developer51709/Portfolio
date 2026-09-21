@@ -37,6 +37,8 @@ ABR="$(value stream.audio_bitrate)"; ABR="\${ABR:-160k}"
 PRESET="$(value stream.preset)"; PRESET="\${PRESET:-veryfast}"
 OVERLAY_TEXT="$(value overlay.text)"
 CREDIT_TEXT="$(value lofi.credit_text)"
+SAFE_TEXT=""
+SAFE_CREDIT=""
 
 [ -n "$RTMP" ] && [ -n "$KEY" ] || { echo "Configure the Twitch RTMP URL and stream key in the admin page first."; exit 1; }
 
@@ -98,6 +100,7 @@ build_filters(){
 # ── Play a single track with overlay ──────────────────────────────
 play_track(){
   local track_url="\$1" idx="\$2"
+  SAFE_CREDIT=\$(escape_dt "\${CREDIT_TEXT}")
   local meta="\${META_DIR}/\$(printf '%04d' "\$idx").json"
   if [ -f "\$meta" ]; then
     local title artist credit

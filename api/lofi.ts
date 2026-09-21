@@ -138,6 +138,10 @@ function publicSettings(value: Settings): Settings {
   const hasStreamKey = typeof stream.stream_key === 'string' && stream.stream_key.length > 0;
   delete stream.stream_key;
   copy.stream_settings = stream;
+  const lofi = { ...((copy.lofi_settings as JsonRecord | undefined) ?? {}) };
+  if (typeof lofi.credit_text === 'string' && /lofigenerator/i.test(lofi.credit_text)) lofi.credit_text = '';
+  if (typeof lofi.generator_url === 'string' && /lofigenerator/i.test(lofi.generator_url)) lofi.generator_url = '';
+  copy.lofi_settings = lofi;
   copy.stream_key_configured = hasStreamKey;
   return copy;
 }
