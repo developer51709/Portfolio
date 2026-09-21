@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { bootstrapLofiSchema } from '../api-lib/lofi-schema.js';
+import { bootstrapLofiSchema, pgQuery } from '../api-lib/lofi-schema.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -99,6 +99,7 @@ function json(res: VercelResponse, value: unknown, status = 200) {
 let schemaBootstrapPromise: Promise<void> | null = null;
 
 async function settings() {
+  // Try the REST API first (fast path)
   try {
     const result = await rows<Settings>('settings?id=eq.1&select=*');
     if (result[0]) return result[0];
@@ -106,21 +107,21 @@ async function settings() {
     if (!(error instanceof Error) || !error.message.includes('Supabase Lofi schema is missing')) throw error;
   }
 
+  // Table missing via REST — run schema bootstrap, then read via pg directly
   schemaBootstrapPromise ??= bootstrapLofiSchema();
   await schemaBootstrapPromise;
 
+  // Read settings via direct Postgres connection (bypasses REST API caching)
+  const pgRows = await pgQuery<Settings>('select * from public.settings where id = 1');
+  if (pgRows[0]) return pgRows[0];
+
+  // Settings row doesn't exist yet — insert it via pg
   const adminSecret = process.env.LOFI_ADMIN_SECRET;
-  const result = await rows<Settings>('settings?id=eq.1&select=*');
-  if (!result[0]) {
-    await db('settings', {
-      method: 'POST',
-      headers: { Prefer: 'return=minimal' },
-      body: JSON.stringify({ id: 1, secret_phrase: adminSecret || 'change-me-now' }),
-    });
-  }
-  const bootstrapped = await rows<Settings>('settings?id=eq.1&select=*');
-  if (!bootstrapped[0]) throw new Error('Lofi settings could not be initialized after schema setup.');
-  return bootstrapped[0];
+  await pgQuery(`insert into public.settings (id, secret_phrase) values (1, ${adminSecret ? "'" + adminSecret.replace(/'/g, "''") + "'" : "'change-me-now'"}) on conflict (id) do nothing`);
+
+  const inserted = await pgQuery<Settings>('select * from public.settings where id = 1');
+  if (!inserted[0]) throw new Error('Lofi settings could not be initialized after schema setup.');
+  return inserted[0];
 }
 
 function publicSettings(value: Settings): Settings {
@@ -288,6 +289,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const message = typeof input.message === 'string' ? input.message.slice(0, 2000) : '';
       if (!message) return json(res, { error: 'Message required' }, 400);
       await db('logs', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ level: String(input.level ?? 'info').slice(0, 20), source: 'stream-host', message }) });
+      return json(res, { ok: true });
+    }
+    if (action === 'track_add' && req.method === 'POST') {
+      const input = await body(req);
+      const title = typeof input.title === 'string' ? input.title.trim().slice(0, 300) : '';
+      const artist = typeof input.artist === 'string' ? input.artist.trim().slice(0, 200) : 'Unknown';
+      const storage_path = typeof input.storage_path === 'string' ? input.storage_path.trim().slice(0, 500) : '';
+      const credit = typeof input.credit === 'string' ? input.credit.trim().slice(0, 300) : '';
+      const duration_seconds = typeof input.duration_seconds === 'number' ? Math.max(0, Math.floor(input.duration_seconds)) : 0;
+      const sort_order = typeof input.sort_order === 'number' ? Math.floor(input.sort_order) : 0;
+      if (!title) return json(res, { error: 'Title is required' }, 400);
+      if (!storage_path) return json(res, { error: 'Storage path is required' }, 400);
+      const inserted = await db('tracks', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({ title, artist, storage_path, credit, duration_seconds, sort_order, active: true }),
+      });
+      const rows = await inserted.json() as JsonRecord[];
+      return json(res, { ok: true, track: rows[0] ?? null });
+    }
+    if (action === 'track_update' && req.method === 'POST') {
+      const input = await body(req);
+      const id = typeof input.id === 'string' ? input.id : '';
+      if (!/^[0-9a-f-]{36}$/i.test(id)) return json(res, { error: 'Invalid track ID' }, 400);
+      const patch: JsonRecord = {};
+      if (typeof input.title === 'string') patch.title = input.title.trim().slice(0, 300);
+      if (typeof input.artist === 'string') patch.artist = input.artist.trim().slice(0, 200);
+      if (typeof input.storage_path === 'string') patch.storage_path = input.storage_path.trim().slice(0, 500);
+      if (typeof input.credit === 'string') patch.credit = input.credit.trim().slice(0, 300);
+      if (typeof input.duration_seconds === 'number') patch.duration_seconds = Math.max(0, Math.floor(input.duration_seconds));
+      if (typeof input.sort_order === 'number') patch.sort_order = Math.floor(input.sort_order);
+      if (typeof input.active === 'boolean') patch.active = input.active;
+      if (!Object.keys(patch).length) return json(res, { error: 'No fields to update' }, 400);
+      await db(`tracks?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
+      return json(res, { ok: true });
+    }
+    if (action === 'track_delete' && req.method === 'POST') {
+      const input = await body(req);
+      const id = typeof input.id === 'string' ? input.id : '';
+      if (!/^[0-9a-f-]{36}$/i.test(id)) return json(res, { error: 'Invalid track ID' }, 400);
+      await db(`tracks?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
       return json(res, { ok: true });
     }
     return json(res, { error: 'Unknown action' }, 404);

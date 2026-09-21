@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FiCheck as Check,
   FiCopy as Copy,
+  FiEdit3 as Edit3,
   FiKey as KeyRound,
   FiLogOut as LogOut,
+  FiMusic as Music,
+  FiPlus as Plus,
   FiRadio as Radio,
   FiRefreshCw as RefreshCw,
   FiSave as Save,
@@ -38,6 +41,17 @@ async function request<T>(action: string, init: RequestInit = {}, token = ''): P
 const field = 'input input-bordered w-full bg-base-300/70';
 const panel = 'card border border-base-content/10 bg-base-100/50 shadow-xl backdrop-blur-xl';
 
+type Track = {
+  id: string;
+  title: string;
+  artist: string;
+  storage_path: string;
+  duration_seconds: number;
+  sort_order: number;
+  active: boolean;
+  credit: string;
+};
+
 export default function LofiAdmin({ onBack }: { onBack: () => void }) {
   const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) ?? '');
   const [phrase, setPhrase] = useState('');
@@ -46,6 +60,9 @@ export default function LofiAdmin({ onBack }: { onBack: () => void }) {
   const [draft, setDraft] = useState<RecordValue>({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [trackDraft, setTrackDraft] = useState<Partial<Track>>({});
+  const [editingTrack, setEditingTrack] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<Partial<Track>>({});
 
   const load = useCallback(async (activeToken: string) => {
     const result = await request<AdminData>('admin', {}, activeToken);
@@ -164,9 +181,69 @@ export default function LofiAdmin({ onBack }: { onBack: () => void }) {
           <section className={`${panel} card-body`}><h2 className="text-lg font-semibold">Security</h2><p className="mt-3 text-sm text-base-content/60">Sessions are short-lived, rate-limited at login, hashed in the database, and sent in a request header rather than a URL. Sensitive values are redacted from admin responses.</p><label className="mt-4 text-xs text-base-content/60">Replace admin phrase (12+ characters)<input className={`${field} mt-1`} type="password" placeholder="Leave empty to keep current" onChange={(e) => setDraft((p) => ({ ...p, secret_phrase: e.target.value }))} /></label></section>
         </div>
 
-        <button className="btn btn-primary mt-6" disabled={busy} onClick={() => void save()}><Save /> {busy ? 'Saving…' : 'Save all changes'}</button>{message && <p className="mt-3 text-sm text-primary">{message}</p>}
+        <button className="btn btn-primary mt-6" disabled={busy} onClick={() => void save()}><Save /> {busy ? 'Saving…' : 'Save all changes'}</button>{message && <p className="mt-3 text-sm text-primary">{message}</p>}          <section className={`${panel} card-body mt-6`}><div className="flex items-center gap-2 text-primary"><Music /><h2 className="text-lg font-semibold">Playback list</h2></div><p className="mt-2 text-sm text-base-content/60">Add audio files with their title and artist. The host picks them up on its next poll.</p>
 
-        <section className={`${panel} card-body mt-6`}><h2 className="text-lg font-semibold">Ad submissions</h2><div className="mt-4 grid gap-2">{data.ads.length === 0 ? <p className="text-sm text-base-content/50">No submissions.</p> : data.ads.map((ad) => <div key={String(ad.id)} className="flex flex-wrap items-center gap-3 rounded-lg border border-base-content/10 p-3"><div className="flex-1"><strong>{String(ad.advertiser_name)}</strong><p className="text-xs text-base-content/50">{String(ad.status)} · {String(ad.duration_seconds)} seconds</p></div><button className="btn btn-ghost btn-sm" onClick={() => void request('ad', { method: 'POST', body: JSON.stringify({ id: ad.id, command: 'approve' }) }, token).then(() => load(token))}><Check /></button><button className="btn btn-ghost btn-sm" onClick={() => void request('ad', { method: 'POST', body: JSON.stringify({ id: ad.id, command: 'reject' }) }, token).then(() => load(token))}><X /></button><button className="btn btn-ghost btn-sm" onClick={() => void request('ad', { method: 'POST', body: JSON.stringify({ id: ad.id, command: 'delete' }) }, token).then(() => load(token))}><Trash2 /></button></div>)}</div></section>
+            <div className="mt-4 rounded-lg border border-base-content/10 bg-base-300/50 p-4">
+              <h3 className="text-sm font-medium mb-3">Add new track</h3>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-xs text-base-content/60">Title<input className={`${field} mt-1`} value={trackDraft.title ?? ''} onChange={(e) => setTrackDraft((p) => ({ ...p, title: e.target.value }))} placeholder="Song title" /></label>
+                <label className="text-xs text-base-content/60">Artist<input className={`${field} mt-1`} value={trackDraft.artist ?? ''} onChange={(e) => setTrackDraft((p) => ({ ...p, artist: e.target.value }))} placeholder="Artist name" /></label>
+                <label className="text-xs text-base-content/60">Storage path (URL)<input className={`${field} mt-1`} value={trackDraft.storage_path ?? ''} onChange={(e) => setTrackDraft((p) => ({ ...p, storage_path: e.target.value }))} placeholder="https://... or storage path" /></label>
+                <label className="text-xs text-base-content/60">Credit (optional)<input className={`${field} mt-1`} value={trackDraft.credit ?? ''} onChange={(e) => setTrackDraft((p) => ({ ...p, credit: e.target.value }))} placeholder="Source credit" /></label>
+                <label className="text-xs text-base-content/60">Duration (seconds)<input className={`${field} mt-1`} type="number" min="0" value={trackDraft.duration_seconds ?? 0} onChange={(e) => setTrackDraft((p) => ({ ...p, duration_seconds: Number(e.target.value) || 0 }))} /></label>
+                <label className="text-xs text-base-content/60">Sort order<input className={`${field} mt-1`} type="number" value={trackDraft.sort_order ?? 0} onChange={(e) => setTrackDraft((p) => ({ ...p, sort_order: Number(e.target.value) || 0 }))} /></label>
+              </div>
+              <button className="btn btn-primary btn-sm mt-3" disabled={busy || !trackDraft.title || !trackDraft.storage_path} onClick={() => void (async () => {
+                setBusy(true);
+                try {
+                  await request('track_add', { method: 'POST', body: JSON.stringify(trackDraft) }, token);
+                  setTrackDraft({});
+                  await load(token);
+                  setMessage('Track added.');
+                } catch (error) { setMessage(error instanceof Error ? error.message : 'Add failed'); } finally { setBusy(false); }
+              })()}><Plus /> Add track</button>
+            </div>
+
+            <div className="mt-4 grid gap-2">
+              {data.tracks.length === 0 ? <p className="text-sm text-base-content/50">No tracks.</p> : (data.tracks as unknown as Track[]).sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)).map((track) => (
+                <div key={track.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-base-content/10 p-3">
+                  {editingTrack === track.id ? (
+                    <div className="w-full grid gap-2 sm:grid-cols-2">
+                      <label className="text-xs text-base-content/60">Title<input className={`${field} mt-1`} value={editDraft.title ?? track.title} onChange={(e) => setEditDraft((p) => ({ ...p, title: e.target.value }))} /></label>
+                      <label className="text-xs text-base-content/60">Artist<input className={`${field} mt-1`} value={editDraft.artist ?? track.artist} onChange={(e) => setEditDraft((p) => ({ ...p, artist: e.target.value }))} /></label>
+                      <label className="text-xs text-base-content/60">Credit<input className={`${field} mt-1`} value={editDraft.credit ?? track.credit} onChange={(e) => setEditDraft((p) => ({ ...p, credit: e.target.value }))} /></label>
+                      <label className="text-xs text-base-content/60">Sort order<input className={`${field} mt-1`} type="number" value={String(editDraft.sort_order ?? track.sort_order)} onChange={(e) => setEditDraft((p) => ({ ...p, sort_order: Number(e.target.value) || 0 }))} /></label>
+                      <div className="flex gap-2 sm:col-span-2">
+                        <button className="btn btn-primary btn-sm" onClick={() => void (async () => {
+                          setBusy(true);
+                          try {
+                            await request('track_update', { method: 'POST', body: JSON.stringify({ id: track.id, ...editDraft }) }, token);
+                            setEditingTrack(null); setEditDraft({});
+                            await load(token);
+                            setMessage('Track updated.');
+                          } catch (error) { setMessage(error instanceof Error ? error.message : 'Update failed'); } finally { setBusy(false); }
+                        })()}><Check /> Save</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => { setEditingTrack(null); setEditDraft({}); }}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex-1 min-w-0">
+                        <strong className="truncate block">{track.title}</strong>
+                        <p className="text-xs text-base-content/50 truncate">{track.artist} · {track.credit || 'No credit'} · #{track.sort_order}</p>
+                      </div>
+                      <span className={`badge badge-sm ${track.active ? 'badge-success' : 'badge-ghost'}`}>{track.active ? 'Active' : 'Inactive'}</span>
+                      <button className="btn btn-ghost btn-sm" onClick={() => { setEditingTrack(track.id); setEditDraft({ title: track.title, artist: track.artist, credit: track.credit, sort_order: track.sort_order }); }}><Edit3 /></button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => void request('track_update', { method: 'POST', body: JSON.stringify({ id: track.id, active: !track.active }) }, token).then(() => load(token))}>{track.active ? 'Pause' : 'Enable'}</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => void request('track_delete', { method: 'POST', body: JSON.stringify({ id: track.id }) }, token).then(() => load(token))}><Trash2 /></button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className={`${panel} card-body mt-6`}><h2 className="text-lg font-semibold">Ad submissions</h2><div className="mt-4 grid gap-2">{data.ads.length === 0 ? <p className="text-sm text-base-content/50">No submissions.</p> : data.ads.map((ad) => <div key={String(ad.id)} className="flex flex-wrap items-center gap-3 rounded-lg border border-base-content/10 p-3"><div className="flex-1"><strong>{String(ad.advertiser_name)}</strong><p className="text-xs text-base-content/50">{String(ad.status)} · {String(ad.duration_seconds)} seconds</p></div><button className="btn btn-ghost btn-sm" onClick={() => void request('ad', { method: 'POST', body: JSON.stringify({ id: ad.id, command: 'approve' }) }, token).then(() => load(token))}><Check /></button><button className="btn btn-ghost btn-sm" onClick={() => void request('ad', { method: 'POST', body: JSON.stringify({ id: ad.id, command: 'reject' }) }, token).then(() => load(token))}><X /></button><button className="btn btn-ghost btn-sm" onClick={() => void request('ad', { method: 'POST', body: JSON.stringify({ id: ad.id, command: 'delete' }) }, token).then(() => load(token))}><Trash2 /></button></div>)}</div></section>
       </div>
     </main>
   );
