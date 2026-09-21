@@ -172,7 +172,8 @@ while :; do
   if [ "\${TRACK_COUNT}" -gt 0 ]; then
     IDX=0
     while IFS= read -r line; do
-      TRACK_URL=\$(printf '%s' "\$line" | python3 -c "import sys; line=sys.stdin.read().strip(); print(line[6:-1] if line.startswith(\"file '\") and line.endswith(\"'\") else line)")
+      TRACK_URL="\${line#file '}"
+      TRACK_URL="\${TRACK_URL%'}"
       play_track "\${TRACK_URL}" "\${IDX}"
       if [ "\${RESTART_REQUESTED}" -eq 1 ]; then break; fi
       IDX=\$((IDX + 1))
