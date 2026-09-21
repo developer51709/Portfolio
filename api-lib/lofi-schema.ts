@@ -1,3 +1,5 @@
+import pg from 'pg';
+
 const LOFI_SCHEMA_SQL = `
 create extension if not exists pgcrypto;
 
@@ -120,29 +122,50 @@ do $$ begin
 end $$;
 `;
 
-function projectRef() {
-  const configured = process.env.SUPABASE_PROJECT_REF;
-  if (configured) return configured;
-  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-  return url.match(/^https?:\/\/([a-z0-9]+)\.supabase\.co/i)?.[1] ?? '';
+/**
+ * Connect directly to the database using the Postgres connection string
+ * provided by the Vercel Supabase integration. No Management API token needed.
+ *
+ * Connection string priority (all provided by the Vercel Supabase integration):
+ *   1. POSTGRES_URL_NON_POOLING — direct connection, best for DDL/migrations
+ *   2. POSTGRES_PRISMA_URL      — pooled Prisma connection
+ *   3. POSTGRES_URL              — standard pooled connection
+ *   4. DATABASE_URL              — legacy fallback
+ */
+function postgresUrl(): string {
+  const url =
+    process.env.POSTGRES_URL_NON_POOLING ??
+    process.env.POSTGRES_PRISMA_URL ??
+    process.env.POSTGRES_URL ??
+    process.env.DATABASE_URL ??
+    '';
+  if (!url) {
+    throw new Error(
+      'No Postgres connection string found. The Vercel Supabase integration provides POSTGRES_URL — make sure the integration is connected to this deployment.',
+    );
+  }
+  return url;
 }
 
 export async function bootstrapLofiSchema() {
-  const accessToken = process.env.SUPABASE_ACCESS_TOKEN ?? process.env.SUPABASE_MANAGEMENT_TOKEN;
-  const ref = projectRef();
-  if (!accessToken || !ref) {
-    throw new Error('Lofi schema is missing. Automatic setup requires SUPABASE_ACCESS_TOKEN and the project URL/ref from the Vercel Supabase integration; the service-role key cannot create database tables.');
-  }
+  const connectionString = postgresUrl();
 
-  const response = await fetch(`https://api.supabase.com/v1/projects/${encodeURIComponent(ref)}/database/query`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ query: LOFI_SCHEMA_SQL }),
+  const client = new pg.Client({
+    connectionString,
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 10_000,
+    statement_timeout: 30_000,
   });
-  if (!response.ok) {
-    throw new Error(`Automatic Lofi schema setup failed (${response.status}). Check SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_REF.`);
+
+  try {
+    await client.connect();
+    await client.query(LOFI_SCHEMA_SQL);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Automatic Lofi schema setup failed: ${msg}. The Vercel Supabase integration must be connected and its POSTGRES_URL must be valid.`,
+    );
+  } finally {
+    await client.end().catch(() => {});
   }
 }

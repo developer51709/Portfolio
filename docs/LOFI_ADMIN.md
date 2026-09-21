@@ -7,24 +7,20 @@ navigation.
 
 ## Required server configuration
 
-The Vercel Supabase integration supplies the project connection values. The Lofi API reads these integration-created variables directly:
+Connect the **Vercel Supabase integration** to this deployment. The Lofi API
+reads these integration-created environment variables directly — no extra
+Supabase setup is needed:
 
-- `SUPABASE_URL` — the Supabase project URL created by the Vercel integration. Projects using the Supabase starter integration may expose the same value as `NEXT_PUBLIC_SUPABASE_URL`; that name is supported as a fallback.
-- `SUPABASE_SERVICE_ROLE_KEY` — the server-only integration key; never expose it to the browser. New Supabase projects may expose the equivalent secret as `SUPABASE_SECRET_KEY`, which is also supported.
-- `LOFI_ADMIN_SECRET` — admin phrase used for login and first-time setup
-- `SUPABASE_ACCESS_TOKEN` — Supabase Management API token used only to apply the
-  Lofi schema automatically when the REST tables are missing
-- `SUPABASE_PROJECT_REF` — optional when it can be derived from the integration-provided project URL
+- `SUPABASE_URL` — the Supabase project URL created by the integration.
+- `SUPABASE_SERVICE_ROLE_KEY` — the server-only integration key; never expose
+  it to the browser.
+- `LOFI_ADMIN_SECRET` — admin phrase used for login and first-time setup.
 
-Do not create a second custom Supabase URL variable just for Lofi; connect the
-Vercel Supabase integration to this deployment and the API will use its
-provided project URL/key names.
-
-On the first request, the API checks for the Lofi settings table. If it is
-missing, it applies an idempotent equivalent of the migrations in
-`twitch-lofi/supabase/migrations/` through the Supabase Management API, then
-retries the request. This requires `SUPABASE_ACCESS_TOKEN`; the Supabase
-service-role key can access tables but cannot create database schema objects.
+The integration also provides `POSTGRES_URL` / `POSTGRES_PRISMA_URL` /
+`POSTGRES_URL_NON_POOLING` — direct database connection strings. On the first
+request, the API connects to the database directly via `POSTGRES_URL` and
+applies the Lofi schema automatically if the tables are missing. No manual
+migration step, `SUPABASE_ACCESS_TOKEN`, or Management API is required.
 
 ## Usage
 
@@ -64,3 +60,14 @@ kept in temporary runtime files only.
 The merged implementation does not expose or use `/overlay.html`, an OBS
 browser source, or browser-source tokens. Stream text and visuals are generated
 by FFmpeg on the host process instead.
+
+## Troubleshooting
+
+If you see *"Lofi schema is missing"*:
+- Verify the **Vercel Supabase integration** is connected to this project in
+  the Vercel dashboard (Settings → Integrations → Supabase).
+- The integration must be connected to the deployment, not just listed in
+  environment variables. Go to the project, click **Integrations**, and
+  connect the Supabase integration there.
+- The `POSTGRES_URL` variable must be set. If the integration is connected but
+  the tables are still missing, the integration may need to be reconnected.

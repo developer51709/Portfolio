@@ -3,9 +3,13 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@vercel/node": "^5.1.1"
+    "@vercel/node": "^5.1.1",
+    "pg": "^8.23.0"
   },
   "allowScripts": {
     "esbuild": true
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
   }
 }
