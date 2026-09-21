@@ -126,7 +126,7 @@ play_track(){
 
   ffmpeg -hide_banner -loglevel warning \\
     "\${VIDEO[@]}" \\
-    -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -i "\${track_url}" \\
+    -i "\${track_url}" \\
     -map 0:v -map 1:a \\
     -vf "\${FILTERS}" \\
     -c:v libx264 -preset "\${PRESET}" -b:v "\${VBR}" -maxrate "\${VBR}" -bufsize 9000k \\
