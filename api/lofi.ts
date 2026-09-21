@@ -85,8 +85,23 @@ function json(res: VercelResponse, value: unknown, status = 200) {
 
 async function settings() {
   const result = await rows<Settings>('settings?id=eq.1&select=*');
-  if (!result[0]) throw new Error('Lofi settings are not configured');
-  return result[0];
+  if (result[0]) return result[0];
+
+  // The migration seeds this singleton row, but a newly connected Supabase
+  // project may have the table without the seed. Bootstrap it once when the
+  // deployment secret is present instead of reporting a misleading config error.
+  const adminSecret = process.env.LOFI_ADMIN_SECRET;
+  if (!adminSecret) {
+    throw new Error('Lofi settings row is missing. Apply the Twitch Lofi Supabase migrations, then configure LOFI_ADMIN_SECRET.');
+  }
+  await db('settings', {
+    method: 'POST',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify({ id: 1, secret_phrase: adminSecret }),
+  });
+  const bootstrapped = await rows<Settings>('settings?id=eq.1&select=*');
+  if (!bootstrapped[0]) throw new Error('Lofi settings could not be initialized. Check that the Supabase service-role key can write to the settings table.');
+  return bootstrapped[0];
 }
 
 function publicSettings(value: Settings): Settings {
