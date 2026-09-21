@@ -61,8 +61,13 @@ for i,t in enumerate(lib):
   ext = url.split("?")[0].rsplit(".",1)[-1] if "." in url.split("?")[0] else "mp3"
   out = os.path.join(td, f"{i:04d}.{ext}")
   if not os.path.exists(out):
-    try: urllib.request.urlretrieve(url, out)
-    except Exception as e: print(f"DL fail {t.get('title','?')}: {e}"); continue
+    try:
+      req = urllib.request.Request(url, headers={"User-Agent": "lofi-stream-host/1.0", "Accept": "audio/*,*/*;q=0.8"})
+      with urllib.request.urlopen(req, timeout=60) as response, open(out, "wb") as output:
+        output.write(response.read())
+    except Exception as e:
+      print(f"DL fail {t.get('title','?')}: {e}")
+      continue
   with open(os.path.join(md, f"{i:04d}.json"),"w") as f:
     json.dump({"title":t.get("title",""),"artist":t.get("artist",""),"credit":t.get("credit","")}, f)
   with open(pf,"a") as f: f.write(f"file '{out}'\\n")

@@ -55,8 +55,8 @@ function hash(value: string) {
 }
 
 function safeEqual(left: string, right: string) {
-  const a = Buffer.from(left);
-  const b = Buffer.from(right);
+  const a = new Uint8Array(Buffer.from(left));
+  const b = new Uint8Array(Buffer.from(right));
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
@@ -214,8 +214,11 @@ async function configForHost(req: VercelRequest, token: string) {
   const host = origin(req);
   const now = new Date().toISOString();
   const ads = await rows<JsonRecord>(`ads?status=eq.approved&start_time=lte.${encodeURIComponent(now)}&select=id,advertiser_name,banner_url,click_url,duration_seconds,start_time,end_time&order=start_time.asc`);
-  const tracks = await rows<JsonRecord>('tracks?active=eq.true&select=id,title,artist,credit,duration_seconds,sort_order&order=sort_order.asc,created_at.asc&limit=500');
+  const tracks = await rows<JsonRecord>('tracks?active=eq.true&select=id,title,artist,credit,duration_seconds,sort_order,storage_path&order=sort_order.asc,created_at.asc&limit=500');
   const track = { ...((config.track_metadata as JsonRecord | undefined) ?? {}) };
+  const lofi = { ...((config.lofi_settings as JsonRecord | undefined) ?? {}) };
+  if (typeof lofi.credit_text === 'string' && /lofigenerator/i.test(lofi.credit_text)) lofi.credit_text = '';
+  if (typeof lofi.generator_url === 'string' && /lofigenerator/i.test(lofi.generator_url)) lofi.generator_url = '';
   if (tracks.length) {
     track.library = tracks;
     track.library_size = tracks.length;
@@ -226,9 +229,9 @@ async function configForHost(req: VercelRequest, token: string) {
     poll_interval_seconds: 15,
     stream: config.stream_settings ?? {},
     track,
-    overlay: { ...((config.overlay_settings as JsonRecord | undefined) ?? {}), text: config.overlay_text ?? '', url: null, credit: (config.lofi_settings as JsonRecord | undefined)?.credit_text ?? '' },
+    overlay: { ...((config.overlay_settings as JsonRecord | undefined) ?? {}), text: config.overlay_text ?? '', url: null, credit: lofi.credit_text ?? '' },
     background_video_url: config.background_video_url ?? '',
-    lofi: config.lofi_settings ?? {},
+    lofi,
     crypto_wallets: config.crypto_wallets ?? [],
     donations: config.donation_settings ?? {},
     ads_settings: config.ad_settings ?? {},
