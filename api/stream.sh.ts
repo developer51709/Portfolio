@@ -154,6 +154,7 @@ play_track(){
     -c:v libx264 -preset "\${PRESET}" -b:v "\${VBR}" -maxrate "\${VBR}" -bufsize 9000k \\
     -pix_fmt yuv420p -r "\${FPS}" -g \$((FPS * 2)) \\
     -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
+    -shortest \\
     -f flv "\${RTMP%/}/\${KEY}" || true
 }
 
