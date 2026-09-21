@@ -30,14 +30,30 @@ async function github(path: string, token?: string) {
 async function getLiveData(): Promise<LiveData> {
   const token = process.env.GITHUB_TOKEN;
   const rawProfile = await github(`/users/${USERNAME}`, token) as Record<string, unknown>;
-  const rawRepos = await github(`/users/${USERNAME}/repos?per_page=100&sort=updated`, token) as Array<Record<string, unknown>>;
-  const repos = rawRepos.filter((repo) => !repo.fork).map((repo) => ({
+  const rawRepos: Array<Record<string, unknown>> = [];
+  for (let page = 1; page <= 10; page += 1) {
+    const batch = await github(`/users/${USERNAME}/repos?per_page=100&page=${page}&sort=updated`, token) as Array<Record<string, unknown>>;
+    rawRepos.push(...batch);
+    if (batch.length < 100) break;
+  }
+  const ownedRepos = rawRepos.filter((repo) => !repo.fork);
+  const repos = ownedRepos.map((repo) => ({
     name: String(repo.name ?? ''),
     description: String(repo.description ?? 'Open-source project'),
     language: String(repo.language ?? 'Code'),
     stars: Number(repo.stargazers_count ?? 0),
   })).slice(0, 4);
-  const languages = [...new Set(repos.map((repo) => repo.language).filter(Boolean))].slice(0, 8);
+  // Build the stack from every owned repository returned by GitHub, not only
+  // the four featured project cards shown below.
+  const languageCounts = new Map<string, number>();
+  for (const repo of ownedRepos) {
+    const language = String(repo.language ?? '').trim();
+    if (language) languageCounts.set(language, (languageCounts.get(language) ?? 0) + 1);
+  }
+  const languages = [...languageCounts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([language]) => language)
+    .slice(0, 8);
   return {
     profile: {
       name: String(rawProfile.name ?? USERNAME),
@@ -78,6 +94,11 @@ function project(x: number, y: number, repo: Repo, color: string) {
 
 function render(data: LiveData) {
   const { profile, repos, languages } = data;
+  const handle = `@${USERNAME}`;
+  const handleTextWidth = handle.length * 7.2;
+  const pillWidth = Math.ceil(28 + handleTextWidth + 12 + 6 * 7.2 + 16);
+  const pillDotX = 218 + handleTextWidth + 6;
+  const pillBadgeX = pillDotX + 12;
   const chips = languages.map((item, index) => `<g transform="translate(${24 + (index % 4) * 132},${80 + Math.floor(index / 4) * 42})"><rect width="116" height="26" rx="13" fill="rgba(79,124,255,0.12)" stroke="rgba(79,124,255,0.20)"/><circle cx="14" cy="13" r="4" fill="${index % 2 ? VIOLET : BLUE}"/><text x="25" y="17" font-family="${FONT}" font-size="10" fill="${TEXT}">${esc(item)}</text></g>`).join('');
   const colors = [BLUE, VIOLET, '#22c55e', '#f97316'];
   const projectCards = repos.map((repo, index) => project(24 + (index % 4) * 266, 78, repo, colors[index % colors.length])).join('');
@@ -86,9 +107,9 @@ function render(data: LiveData) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs><linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0b0b12"/><stop offset="1" stop-color="#030305"/></linearGradient><radialGradient id="blueGlow"><stop stop-color="#4f7cff" stop-opacity=".18"/><stop offset="1" stop-color="#4f7cff" stop-opacity="0"/></radialGradient><radialGradient id="violetGlow"><stop stop-color="#a78bfa" stop-opacity=".15"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></radialGradient><clipPath id="avatarClip"><circle cx="104" cy="104" r="64"/></clipPath></defs>
   <rect width="${W}" height="${H}" rx="26" fill="url(#background)"/><circle cx="100" cy="60" r="320" fill="url(#blueGlow)"/><circle cx="1100" cy="900" r="380" fill="url(#violetGlow)"/><rect x="1" y="1" width="${W - 2}" height="${H - 2}" rx="25" fill="none" stroke="${BORDER}"/>
-  <circle cx="104" cy="104" r="68" fill="#101018" stroke="${BLUE}" stroke-opacity=".45" stroke-width="2"/><image href="${profile.avatar}" x="40" y="40" width="128" height="128" clip-path="url(#avatarClip)" preserveAspectRatio="xMidYMid slice"/><text x="200" y="82" font-family="${FONT}" font-size="44" font-weight="800" fill="${TEXT}">${esc(profile.name)}</text><text x="202" y="113" font-family="${FONT}" font-size="16" fill="${MUTED}">Full-stack developer · Discord infrastructure · Automation</text><rect x="202" y="134" width="250" height="28" rx="14" fill="rgba(79,124,255,0.14)"/><text x="218" y="153" font-family="${FONT}" font-size="12" fill="${BLUE}">@${USERNAME}</text><text x="418" y="153" font-family="${FONT}" font-size="12" fill="${VIOLET}">· Linavo</text>
+  <circle cx="104" cy="104" r="68" fill="#101018" stroke="${BLUE}" stroke-opacity=".45" stroke-width="2"/><image href="${profile.avatar}" x="40" y="40" width="128" height="128" clip-path="url(#avatarClip)" preserveAspectRatio="xMidYMid slice"/><text x="200" y="82" font-family="${FONT}" font-size="44" font-weight="800" fill="${TEXT}">${esc(profile.name)}</text><text x="202" y="113" font-family="${FONT}" font-size="16" fill="${MUTED}">Full-stack developer · Discord infrastructure · Automation</text><rect x="202" y="134" width="${pillWidth}" height="28" rx="14" fill="rgba(79,124,255,0.14)"/><text x="218" y="153" font-family="${FONT}" font-size="12" fill="${BLUE}">${handle}</text><text x="${pillDotX}" y="153" font-family="${FONT}" font-size="12" fill="${VIOLET}">·</text><text x="${pillBadgeX}" y="153" font-family="${FONT}" font-size="12" fill="${VIOLET}">Linavo</text>
   ${panel(48,210,1104,112,heading('About', 'Building reliable systems, modern dashboards, and Discord bots with a focus on clean design and great user experiences.') + '<text x="24" y="86" font-family="' + FONT + '" font-size="12" fill="' + MUTED + '">Open to collaborations, coding requests, and small freelance tasks · currently learning AI automation integrations</text>')}
-  ${panel(48,346,530,112,heading('GitHub activity', 'Live public profile data') + stat(24,'Repos',String(profile.repos),BLUE,'repos') + stat(160,'Followers',String(profile.followers),VIOLET,'followers') + stat(296,'Following',String(profile.following), '#22c55e','following'))}
+  ${panel(48,346,530,112,heading('GitHub activity', 'Live public profile data') + stat(24,'Repos',String(profile.repos),BLUE,'repos') + stat(184,'Followers',String(profile.followers),VIOLET,'followers') + stat(344,'Following',String(profile.following), '#22c55e','following'))}
   ${panel(598,346,554,112,heading('Contact', 'Discord is usually the quickest way to reach me') + '<text x="24" y="88" font-family="' + FONT + '" font-size="13" fill="' + BLUE + '">@sorenthedev</text><text x="200" y="88" font-family="' + FONT + '" font-size="13" fill="' + TEXT + '">developer51709@proton.me</text>')}
   ${panel(48,482,1104,202,heading('Tech stack', 'Languages detected from current public repositories') + (chips || '<text x="24" y="100" font-family="' + FONT + '" font-size="12" fill="' + MUTED + '">No language data found.</text>'))}
   ${panel(48,708,1104,216,heading('Selected projects', 'Recently updated public repositories') + paddedProjects)}
