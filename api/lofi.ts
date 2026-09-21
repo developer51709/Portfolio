@@ -19,9 +19,16 @@ type Settings = JsonRecord & {
 };
 
 function supabaseConfig() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+  // These are the server-side names used by the Vercel Supabase integration.
+  // Keep the NEXT_PUBLIC URL fallback for projects provisioned from the
+  // Supabase starter integration, which exposes the same project URL there.
+  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
+  if (!url || !key) {
+    throw new Error(
+      'Missing the Vercel Supabase integration variables: SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY.',
+    );
+  }
   return { url: url.replace(/\/$/, ''), key };
 }
 
@@ -34,7 +41,7 @@ async function db(path: string, init: RequestInit = {}) {
   const response = await fetch(`${url}/rest/v1/${path}`, { ...init, headers });
   if (!response.ok) {
     if (response.status === 404) {
-      throw new Error(`Supabase Lofi schema is missing or the configured project is wrong. Apply twitch-lofi/supabase/migrations to the Supabase project used by SUPABASE_URL (failed request: ${path}).`);
+      throw new Error(`Supabase Lofi schema is missing or the configured project is wrong. Apply twitch-lofi/supabase/migrations to the project from the Vercel Supabase integration URL (failed request: ${path}).`);
     }
     throw new Error(`Database request failed (${response.status}) for ${path}`);
   }

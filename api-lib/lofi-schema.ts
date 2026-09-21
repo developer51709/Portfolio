@@ -123,7 +123,7 @@ end $$;
 function projectRef() {
   const configured = process.env.SUPABASE_PROJECT_REF;
   if (configured) return configured;
-  const url = process.env.SUPABASE_URL ?? '';
+  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
   return url.match(/^https?:\/\/([a-z0-9]+)\.supabase\.co/i)?.[1] ?? '';
 }
 
@@ -131,7 +131,7 @@ export async function bootstrapLofiSchema() {
   const accessToken = process.env.SUPABASE_ACCESS_TOKEN ?? process.env.SUPABASE_MANAGEMENT_TOKEN;
   const ref = projectRef();
   if (!accessToken || !ref) {
-    throw new Error('Lofi schema is missing. Automatic setup requires SUPABASE_ACCESS_TOKEN and a Supabase project URL/ref; the service-role key cannot create database tables.');
+    throw new Error('Lofi schema is missing. Automatic setup requires SUPABASE_ACCESS_TOKEN and the project URL/ref from the Vercel Supabase integration; the service-role key cannot create database tables.');
   }
 
   const response = await fetch(`https://api.supabase.com/v1/projects/${encodeURIComponent(ref)}/database/query`, {

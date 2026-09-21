@@ -7,14 +7,18 @@ navigation.
 
 ## Required server configuration
 
-The Vercel deployment needs these environment variables:
+The Vercel Supabase integration supplies the project connection values. The Lofi API reads these integration-created variables directly:
 
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY` — server-only; never expose this to the browser
+- `SUPABASE_URL` — the Supabase project URL created by the Vercel integration. Projects using the Supabase starter integration may expose the same value as `NEXT_PUBLIC_SUPABASE_URL`; that name is supported as a fallback.
+- `SUPABASE_SERVICE_ROLE_KEY` — the server-only integration key; never expose it to the browser. New Supabase projects may expose the equivalent secret as `SUPABASE_SECRET_KEY`, which is also supported.
 - `LOFI_ADMIN_SECRET` — admin phrase used for login and first-time setup
 - `SUPABASE_ACCESS_TOKEN` — Supabase Management API token used only to apply the
   Lofi schema automatically when the REST tables are missing
-- `SUPABASE_PROJECT_REF` — optional when it can be derived from `SUPABASE_URL`
+- `SUPABASE_PROJECT_REF` — optional when it can be derived from the integration-provided project URL
+
+Do not create a second custom Supabase URL variable just for Lofi; connect the
+Vercel Supabase integration to this deployment and the API will use its
+provided project URL/key names.
 
 On the first request, the API checks for the Lofi settings table. If it is
 missing, it applies an idempotent equivalent of the migrations in
