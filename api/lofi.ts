@@ -31,7 +31,12 @@ async function db(path: string, init: RequestInit = {}) {
   headers.set('Authorization', `Bearer ${key}`);
   headers.set('Content-Type', 'application/json');
   const response = await fetch(`${url}/rest/v1/${path}`, { ...init, headers });
-  if (!response.ok) throw new Error(`Database request failed (${response.status})`);
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(`Supabase Lofi schema is missing or the configured project is wrong. Apply twitch-lofi/supabase/migrations to the Supabase project used by SUPABASE_URL (failed request: ${path}).`);
+    }
+    throw new Error(`Database request failed (${response.status}) for ${path}`);
+  }
   return response;
 }
 
