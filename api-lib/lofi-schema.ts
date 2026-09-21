@@ -148,11 +148,15 @@ function postgresUrl(): string {
 }
 
 export async function bootstrapLofiSchema() {
-  const connectionString = postgresUrl();
+  const raw = postgresUrl();
+  // Strip sslmode from the URL — pg handles SSL via the `ssl` option,
+  // and sslmode=require in the URL can conflict with self-signed certs
+  // in the Vercel/Supabase certificate chain.
+  const connectionString = raw.replace(/([?&])sslmode=[^&]*/g, '$1').replace(/[?&]$/, '');
 
   const client = new pg.Client({
     connectionString,
-    ssl: { rejectUnauthorized: false },
+    ssl: false,
     connectionTimeoutMillis: 10_000,
     statement_timeout: 30_000,
   });
