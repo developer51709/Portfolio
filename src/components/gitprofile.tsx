@@ -28,6 +28,7 @@ import GithubStatsCard from './github-stats-card';
 import TechStack from './tech-stack';
 import CommissionsPage from './commissions-page';
 import LegalPage, { PRIVACY_DOC, TERMS_DOC } from './legal-page';
+import LofiAdmin from './lofi-admin';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 
@@ -40,6 +41,7 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
  *   sponsor      -> OxaPay donation page
  *   terms        -> Commission terms of service
  *   privacy      -> Commission privacy policy
+ *   admin        -> Protected Twitch Lofi control plane
  */
 const GitProfile = ({ config }: { config: Config }) => {
   const [sanitizedConfig] = useState<SanitizedConfig | Record<string, never>>(
@@ -196,7 +198,7 @@ const GitProfile = ({ config }: { config: Config }) => {
         />
       ) : (
         <>
-          {!['sponsor', 'terms', 'privacy'].includes(pageRoute) && (
+          {!['sponsor', 'terms', 'privacy', 'admin'].includes(pageRoute) && (
             <SponsorButton onClick={() => navigate('sponsor')} />
           )}
 
@@ -282,9 +284,11 @@ const GitProfile = ({ config }: { config: Config }) => {
                 <LegalPage document={TERMS_DOC} onBack={() => navigate('')} />
               )}
 
-              {pageRoute === 'privacy' && (
+                  {pageRoute === 'privacy' && (
                 <LegalPage document={PRIVACY_DOC} onBack={() => navigate('')} />
               )}
+
+              {pageRoute === 'admin' && <LofiAdmin onBack={() => navigate('')} />}
             </PageLayout>
           )}
         </>

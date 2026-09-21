@@ -1,0 +1,173 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  FiCheck as Check,
+  FiCopy as Copy,
+  FiKey as KeyRound,
+  FiLogOut as LogOut,
+  FiRadio as Radio,
+  FiRefreshCw as RefreshCw,
+  FiSave as Save,
+  FiShield as ShieldCheck,
+  FiTrash2 as Trash2,
+  FiX as X,
+} from 'react-icons/fi';
+
+type RecordValue = Record<string, unknown>;
+type AdminData = {
+  settings: RecordValue;
+  secrets_configured: boolean;
+  ads: RecordValue[];
+  donations: RecordValue[];
+  logs: RecordValue[];
+  tracks: RecordValue[];
+};
+
+const TOKEN_KEY = 'lofi.admin.session';
+const api = '/api/lofi';
+
+async function request<T>(action: string, init: RequestInit = {}, token = ''): Promise<T> {
+  const response = await fetch(`${api}?action=${action}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(token ? { 'x-lofi-token': token } : {}), ...(init.headers ?? {}) },
+  });
+  const payload = (await response.json()) as T & { error?: string };
+  if (!response.ok) throw new Error(payload.error || `Request failed (${response.status})`);
+  return payload;
+}
+
+const field = 'input input-bordered w-full bg-base-300/70';
+const panel = 'card border border-base-content/10 bg-base-100/50 shadow-xl backdrop-blur-xl';
+
+export default function LofiAdmin({ onBack }: { onBack: () => void }) {
+  const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY) ?? '');
+  const [phrase, setPhrase] = useState('');
+  const [streamKey, setStreamKey] = useState('');
+  const [data, setData] = useState<AdminData | null>(null);
+  const [draft, setDraft] = useState<RecordValue>({});
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const load = useCallback(async (activeToken: string) => {
+    const result = await request<AdminData>('admin', {}, activeToken);
+    setData(result);
+    setDraft(result.settings);
+  }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    void load(token).catch(() => {
+      sessionStorage.removeItem(TOKEN_KEY);
+      setToken('');
+      setData(null);
+    });
+  }, [load, token]);
+
+  const origin = typeof window === 'undefined' ? '' : window.location.origin;
+  const hostCommand = useMemo(() => `bash <(curl -fsSL ${origin}/api/stream.sh)`, [origin]);
+
+  async function login(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await request<{ token: string }>('login', { method: 'POST', body: JSON.stringify({ phrase }) });
+      sessionStorage.setItem(TOKEN_KEY, result.token);
+      setPhrase('');
+      setToken(result.token);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Login failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function save() {
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await request<AdminData>('save', { method: 'POST', body: JSON.stringify({ patch: draft, ...(streamKey ? { stream_key: streamKey } : {}) }) }, token);
+      setData(result);
+      setDraft(result.settings);
+      setMessage('Settings saved. The host picks them up on its next poll.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Save failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function logout() {
+    sessionStorage.removeItem(TOKEN_KEY);
+    setToken('');
+    setData(null);
+  }
+
+  function nested(key: string, name: string) {
+    return String(((draft[key] as RecordValue | undefined) ?? {})[name] ?? '');
+  }
+  function setNested(key: string, name: string, value: string | number | boolean) {
+    setDraft((current) => ({ ...current, [key]: { ...((current[key] as RecordValue) ?? {}), [name]: value } }));
+  }
+  function copy(value: string) {
+    void navigator.clipboard.writeText(value);
+    setMessage('Copied to clipboard.');
+  }
+
+  if (!token || !data) {
+    return (
+      <main className="relative min-h-screen bg-base-300 px-4 py-16">
+        <div className="mx-auto max-w-md">
+          <div className={`${panel} card-body`}>
+            <span className="badge badge-primary gap-2"><KeyRound /> private control plane</span>
+            <h1 className="card-title mt-5 text-3xl">Lofi stream admin</h1>
+            <p className="mt-2 text-sm text-base-content/60">The phrase is never placed in a URL or persisted. Only a short-lived session token is kept for this tab.</p>
+            <form onSubmit={login} className="mt-6 space-y-4">
+              <input className={field} type="password" value={phrase} onChange={(event) => setPhrase(event.target.value)} placeholder="Admin phrase" autoComplete="current-password" required />
+              <button className="btn btn-primary w-full" disabled={busy}>{busy ? 'Checking…' : 'Unlock dashboard'}</button>
+            </form>
+            {message && <p className="mt-4 text-sm text-error">{message}</p>}
+            <button className="btn btn-ghost mt-4" onClick={onBack}>Back to portfolio</button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  const settings = draft;
+  const stream = (settings.stream_settings as RecordValue) ?? {};
+  const overlay = (settings.overlay_settings as RecordValue) ?? {};
+
+  return (
+    <main className="relative min-h-screen bg-base-300 px-4 py-10 lg:px-10">
+      <div className="mx-auto max-w-6xl">
+        <header className="flex flex-wrap items-center justify-between gap-4">
+          <div><span className="badge badge-primary gap-2"><Radio /> control plane</span><h1 className="mt-3 text-3xl font-bold">Lofi stream admin</h1><p className="text-sm text-base-content/60">Manage the external FFmpeg host. No OBS browser source is used.</p></div>
+          <div className="flex gap-2"><button className="btn btn-ghost" onClick={() => void load(token)}><RefreshCw /> Refresh</button><button className="btn btn-ghost" onClick={logout}><LogOut /> Sign out</button></div>
+        </header>
+
+        <section className={`${panel} card-body mt-8`}>
+          <div className="flex items-center gap-2 text-primary"><ShieldCheck /><h2 className="text-lg font-semibold">Host bootstrap</h2></div>
+          <p className="mt-2 text-sm text-base-content/60">Run this on the machine that owns the Twitch stream. It authenticates once, keeps only temporary runtime files, and polls the control plane for changes.</p>
+          <div className="mt-4 flex items-center gap-2 rounded-lg bg-base-300 p-3 font-mono text-xs"><code className="flex-1 break-all">{hostCommand}</code><button className="btn btn-ghost btn-sm" onClick={() => copy(hostCommand)}><Copy /></button></div>
+          <p className="mt-3 text-xs text-success">OBS/browser-source integration removed. Overlays are generated by FFmpeg on the host.</p>
+        </section>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <section className={`${panel} card-body`}><h2 className="text-lg font-semibold">Stream</h2><div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {([['rtmp_url', 'RTMP URL'], ['stream_key', 'Stream key'], ['resolution', 'Resolution'], ['fps', 'FPS'], ['video_bitrate', 'Video bitrate'], ['audio_bitrate', 'Audio bitrate'], ['preset', 'Preset']] as const).map(([key, label]) => <label key={key} className="text-xs text-base-content/60">{label}<input className={`${field} mt-1`} type={key === 'fps' ? 'number' : key === 'stream_key' ? 'password' : 'text'} value={key === 'stream_key' ? streamKey : String(stream[key] ?? '')} placeholder={key === 'stream_key' && data.settings.stream_key_configured ? '•••••••••••• (leave empty to keep)' : undefined} onChange={(e) => key === 'stream_key' ? setStreamKey(e.target.value) : setNested('stream_settings', key, key === 'fps' ? Number(e.target.value) || 0 : e.target.value)} /></label>)}
+          </div></section>
+
+          <section className={`${panel} card-body`}><h2 className="text-lg font-semibold">Overlay & playback</h2><label className="mt-4 text-xs text-base-content/60">Overlay text<textarea className={`${field} mt-1`} rows={3} value={String(settings.overlay_text ?? '')} onChange={(e) => setDraft((p) => ({ ...p, overlay_text: e.target.value }))} /></label><label className="mt-3 text-xs text-base-content/60">Background video URL<input className={`${field} mt-1`} value={String(settings.background_video_url ?? '')} onChange={(e) => setDraft((p) => ({ ...p, background_video_url: e.target.value }))} /></label><div className="mt-4 flex flex-wrap gap-4 text-sm"><label><input type="checkbox" checked={overlay.show_qr !== false} onChange={(e) => setNested('overlay_settings', 'show_qr', e.target.checked)} /> Show QR codes</label><label><input type="checkbox" checked={overlay.show_ads !== false} onChange={(e) => setNested('overlay_settings', 'show_ads', e.target.checked)} /> Show ads</label></div></section>
+
+          <section className={`${panel} card-body`}><h2 className="text-lg font-semibold">Donations</h2><div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="text-xs text-base-content/60">Description<input className={`${field} mt-1`} value={nested('donation_settings', 'description')} onChange={(e) => setNested('donation_settings', 'description', e.target.value)} /></label><label className="text-xs text-base-content/60">Currency<input className={`${field} mt-1`} value={nested('donation_settings', 'currency')} onChange={(e) => setNested('donation_settings', 'currency', e.target.value)} /></label><label className="text-xs text-base-content/60">Minimum amount<input className={`${field} mt-1`} type="number" min="0" value={nested('donation_settings', 'min_amount')} onChange={(e) => setNested('donation_settings', 'min_amount', Number(e.target.value) || 0)} /></label><label className="text-xs text-base-content/60">Reward text<input className={`${field} mt-1`} value={nested('donation_settings', 'reward_text')} onChange={(e) => setNested('donation_settings', 'reward_text', e.target.value)} /></label></div><p className="mt-4 text-xs text-base-content/50">Merchant credentials are never returned to this page. Configure them through the server environment or the protected save action.</p></section>
+
+          <section className={`${panel} card-body`}><h2 className="text-lg font-semibold">Security</h2><p className="mt-3 text-sm text-base-content/60">Sessions are short-lived, rate-limited at login, hashed in the database, and sent in a request header rather than a URL. Sensitive values are redacted from admin responses.</p><label className="mt-4 text-xs text-base-content/60">Replace admin phrase (12+ characters)<input className={`${field} mt-1`} type="password" placeholder="Leave empty to keep current" onChange={(e) => setDraft((p) => ({ ...p, secret_phrase: e.target.value }))} /></label></section>
+        </div>
+
+        <button className="btn btn-primary mt-6" disabled={busy} onClick={() => void save()}><Save /> {busy ? 'Saving…' : 'Save all changes'}</button>{message && <p className="mt-3 text-sm text-primary">{message}</p>}
+
+        <section className={`${panel} card-body mt-6`}><h2 className="text-lg font-semibold">Ad submissions</h2><div className="mt-4 grid gap-2">{data.ads.length === 0 ? <p className="text-sm text-base-content/50">No submissions.</p> : data.ads.map((ad) => <div key={String(ad.id)} className="flex flex-wrap items-center gap-3 rounded-lg border border-base-content/10 p-3"><div className="flex-1"><strong>{String(ad.advertiser_name)}</strong><p className="text-xs text-base-content/50">{String(ad.status)} · {String(ad.duration_seconds)} seconds</p></div><button className="btn btn-ghost btn-sm" onClick={() => void request('ad', { method: 'POST', body: JSON.stringify({ id: ad.id, command: 'approve' }) }, token).then(() => load(token))}><Check /></button><button className="btn btn-ghost btn-sm" onClick={() => void request('ad', { method: 'POST', body: JSON.stringify({ id: ad.id, command: 'reject' }) }, token).then(() => load(token))}><X /></button><button className="btn btn-ghost btn-sm" onClick={() => void request('ad', { method: 'POST', body: JSON.stringify({ id: ad.id, command: 'delete' }) }, token).then(() => load(token))}><Trash2 /></button></div>)}</div></section>
+      </div>
+    </main>
+  );
+}
