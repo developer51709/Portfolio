@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://sorenthedev.indevs.in">
-    <img src="https://sorenthedev.indevs.in/api/cards/profile?username=developer51709" width="100%" alt="Soren's unified developer profile card" />
+    <img src="https://sorenthedev.indevs.in/api/cards/profile" width="100%" alt="Soren's unified developer profile card" />
   </a>
 </p>
 
