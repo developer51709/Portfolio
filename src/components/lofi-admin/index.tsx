@@ -63,6 +63,8 @@ export default function LofiAdmin({ onBack }: { onBack: () => void }) {
   const [trackDraft, setTrackDraft] = useState<Partial<Track>>({});
   const [editingTrack, setEditingTrack] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<Partial<Track>>({});
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async (activeToken: string) => {
     const result = await request<AdminData>('admin', {}, activeToken);
@@ -188,12 +190,38 @@ export default function LofiAdmin({ onBack }: { onBack: () => void }) {
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="text-xs text-base-content/60">Title<input className={`${field} mt-1`} value={trackDraft.title ?? ''} onChange={(e) => setTrackDraft((p) => ({ ...p, title: e.target.value }))} placeholder="Song title" /></label>
                 <label className="text-xs text-base-content/60">Artist<input className={`${field} mt-1`} value={trackDraft.artist ?? ''} onChange={(e) => setTrackDraft((p) => ({ ...p, artist: e.target.value }))} placeholder="Artist name" /></label>
-                <label className="text-xs text-base-content/60">Storage path (URL)<input className={`${field} mt-1`} value={trackDraft.storage_path ?? ''} onChange={(e) => setTrackDraft((p) => ({ ...p, storage_path: e.target.value }))} placeholder="https://... or storage path" /></label>
                 <label className="text-xs text-base-content/60">Credit (optional)<input className={`${field} mt-1`} value={trackDraft.credit ?? ''} onChange={(e) => setTrackDraft((p) => ({ ...p, credit: e.target.value }))} placeholder="Source credit" /></label>
-                <label className="text-xs text-base-content/60">Duration (seconds)<input className={`${field} mt-1`} type="number" min="0" value={trackDraft.duration_seconds ?? 0} onChange={(e) => setTrackDraft((p) => ({ ...p, duration_seconds: Number(e.target.value) || 0 }))} /></label>
-                <label className="text-xs text-base-content/60">Sort order<input className={`${field} mt-1`} type="number" value={trackDraft.sort_order ?? 0} onChange={(e) => setTrackDraft((p) => ({ ...p, sort_order: Number(e.target.value) || 0 }))} /></label>
               </div>
-              <button className="btn btn-primary btn-sm mt-3" disabled={busy || !trackDraft.title || !trackDraft.storage_path} onClick={() => void (async () => {
+
+              <div className="mt-3 flex flex-col gap-3">
+                <label className="text-xs text-base-content/60">Upload audio file
+                  <input className="file-input file-input-bordered file-input-sm w-full bg-base-300/70 mt-1" type="file" accept="audio/*" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} />
+                </label>
+                {uploadFile && <p className="text-xs text-base-content/50">Selected: {uploadFile.name} ({(uploadFile.size / 1024 / 1024).toFixed(1)} MB)</p>}
+                <button className="btn btn-primary btn-sm" disabled={uploading || !uploadFile || !trackDraft.title} onClick={() => void (async () => {
+                  setUploading(true); setMessage('');
+                  try {
+                    const fd = new FormData();
+                    fd.append('file', uploadFile!);
+                    fd.append('title', trackDraft.title ?? '');
+                    fd.append('artist', trackDraft.artist ?? 'Unknown');
+                    fd.append('credit', trackDraft.credit ?? '');
+                    const resp = await fetch(`${api}?action=track_upload`, { method: 'POST', headers: { 'x-lofi-token': token }, body: fd });
+                    const payload = await resp.json() as { error?: string };
+                    if (!resp.ok) throw new Error(payload.error || 'Upload failed');
+                    setTrackDraft({}); setUploadFile(null);
+                    await load(token);
+                    setMessage('Track uploaded and added.');
+                  } catch (error) { setMessage(error instanceof Error ? error.message : 'Upload failed'); } finally { setUploading(false); }
+                })()}>{uploading ? 'Uploading…' : 'Upload & add'}</button>
+              </div>
+
+              <div className="divider text-xs text-base-content/40">or add by URL</div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-xs text-base-content/60">Storage path (URL)<input className={`${field} mt-1`} value={trackDraft.storage_path ?? ''} onChange={(e) => setTrackDraft((p) => ({ ...p, storage_path: e.target.value }))} placeholder="https://... or storage path" /></label>
+              </div>
+              <button className="btn btn-ghost btn-sm mt-3" disabled={busy || !trackDraft.title || !trackDraft.storage_path} onClick={() => void (async () => {
                 setBusy(true);
                 try {
                   await request('track_add', { method: 'POST', body: JSON.stringify(trackDraft) }, token);
@@ -201,7 +229,7 @@ export default function LofiAdmin({ onBack }: { onBack: () => void }) {
                   await load(token);
                   setMessage('Track added.');
                 } catch (error) { setMessage(error instanceof Error ? error.message : 'Add failed'); } finally { setBusy(false); }
-              })()}><Plus /> Add track</button>
+              })()}><Plus /> Add by URL</button>
             </div>
 
             <div className="mt-4 grid gap-2">

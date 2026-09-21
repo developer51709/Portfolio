@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { put } from '@vercel/blob';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -297,6 +298,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await db('logs', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ level: String(input.level ?? 'info').slice(0, 20), source: 'stream-host', message }) });
       return json(res, { ok: true });
     }
+    if (action === 'track_upload' && req.method === 'POST') {
+      // Multipart upload: the frontend sends the file as a multipart form
+      const contentType = req.headers['content-type'] ?? '';
+      if (!contentType.includes('multipart')) return json(res, { error: 'Expected multipart form data' }, 400);
+      const formData = await new Response(req as unknown as BodyInit).formData();
+      const file = formData.get('file') as File | null;
+      if (!file) return json(res, { error: 'No file provided' }, 400);
+      const title = String(formData.get('title') ?? file.name ?? '').trim().slice(0, 300);
+      const artist = String(formData.get('artist') ?? 'Unknown').trim().slice(0, 200);
+      const credit = String(formData.get('credit') ?? '').trim().slice(0, 300);
+      if (!title) return json(res, { error: 'Title is required' }, 400);
+      // Upload to Vercel Blob
+      const blob = await put(`lofi/tracks/${Date.now()}-${file.name}`, file, { access: 'public', token: process.env.BLOB_READ_WRITE_TOKEN });
+      // Auto sort_order: get current max
+      const existing = await rows<JsonRecord>('tracks?select=sort_order&order=sort_order.desc&limit=1');
+      const nextSort = ((existing[0] as JsonRecord | undefined)?.sort_order as number ?? -1) + 1;
+      const response = await db('tracks', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({ title, artist, storage_path: blob.url, credit, duration_seconds: 0, bytes: file.size, sort_order: nextSort, active: true }),
+      });
+      const rows2 = await response.json() as JsonRecord[];
+      return json(res, { ok: true, track: rows2[0] ?? null });
+    }
     if (action === 'track_add' && req.method === 'POST') {
       const input = await body(req);
       const title = typeof input.title === 'string' ? input.title.trim().slice(0, 300) : '';
@@ -304,16 +329,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const storage_path = typeof input.storage_path === 'string' ? input.storage_path.trim().slice(0, 500) : '';
       const credit = typeof input.credit === 'string' ? input.credit.trim().slice(0, 300) : '';
       const duration_seconds = typeof input.duration_seconds === 'number' ? Math.max(0, Math.floor(input.duration_seconds)) : 0;
-      const sort_order = typeof input.sort_order === 'number' ? Math.floor(input.sort_order) : 0;
       if (!title) return json(res, { error: 'Title is required' }, 400);
       if (!storage_path) return json(res, { error: 'Storage path is required' }, 400);
+      // Auto sort_order
+      const existing = await rows<JsonRecord>('tracks?select=sort_order&order=sort_order.desc&limit=1');
+      const nextSort = ((existing[0] as JsonRecord | undefined)?.sort_order as number ?? -1) + 1;
       const response = await db('tracks', {
         method: 'POST',
         headers: { Prefer: 'return=representation' },
-        body: JSON.stringify({ title, artist, storage_path, credit, duration_seconds, sort_order, active: true }),
+        body: JSON.stringify({ title, artist, storage_path, credit, duration_seconds, sort_order: nextSort, active: true }),
       });
-      const rows = await response.json() as JsonRecord[];
-      return json(res, { ok: true, track: rows[0] ?? null });
+      const inserted = await response.json() as JsonRecord[];
+      return json(res, { ok: true, track: inserted[0] ?? null });
     }
     if (action === 'track_update' && req.method === 'POST') {
       const input = await body(req);
