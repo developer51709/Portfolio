@@ -299,25 +299,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return json(res, { ok: true });
     }
     if (action === 'track_upload' && req.method === 'POST') {
-      // Multipart upload: the frontend sends the file as a multipart form
-      const contentType = req.headers['content-type'] ?? '';
-      if (!contentType.includes('multipart')) return json(res, { error: 'Expected multipart form data' }, 400);
-      const formData = await new Response(req as unknown as BodyInit).formData();
-      const file = formData.get('file') as File | null;
-      if (!file) return json(res, { error: 'No file provided' }, 400);
-      const title = String(formData.get('title') ?? file.name ?? '').trim().slice(0, 300);
-      const artist = String(formData.get('artist') ?? 'Unknown').trim().slice(0, 200);
-      const credit = String(formData.get('credit') ?? '').trim().slice(0, 300);
+      // JSON upload: frontend sends base64-encoded file data
+      const input = await body(req);
+      const fileB64 = typeof input.file === 'string' ? input.file : '';
+      const filename = typeof input.filename === 'string' ? input.filename.trim() : '';
+      const mimeType = typeof input.mimeType === 'string' ? input.mimeType.trim() : 'audio/mpeg';
+      const title = typeof input.title === 'string' ? input.title.trim().slice(0, 300) : '';
+      const artist = typeof input.artist === 'string' ? input.artist.trim().slice(0, 200) : 'Unknown';
+      const credit = typeof input.credit === 'string' ? input.credit.trim().slice(0, 300) : '';
+      if (!fileB64) return json(res, { error: 'No file data provided' }, 400);
       if (!title) return json(res, { error: 'Title is required' }, 400);
+      // Decode base64 to Buffer
+      const fileBuffer = Buffer.from(fileB64, 'base64');
+      const safeName = (filename || 'track.mp3').replace(/[^a-zA-Z0-9._-]/g, '_');
       // Upload to Vercel Blob
-      const blob = await put(`lofi/tracks/${Date.now()}-${file.name}`, file, { access: 'public', token: process.env.BLOB_READ_WRITE_TOKEN });
+      const blob = await put(`lofi/tracks/${Date.now()}-${safeName}`, fileBuffer, {
+        access: 'public',
+        contentType: mimeType || 'audio/mpeg',
+        token: process.env.BLOB_READ_WRITE_TOKEN,
+      });
       // Auto sort_order: get current max
       const existing = await rows<JsonRecord>('tracks?select=sort_order&order=sort_order.desc&limit=1');
       const nextSort = ((existing[0] as JsonRecord | undefined)?.sort_order as number ?? -1) + 1;
       const response = await db('tracks', {
         method: 'POST',
         headers: { Prefer: 'return=representation' },
-        body: JSON.stringify({ title, artist, storage_path: blob.url, credit, duration_seconds: 0, bytes: file.size, sort_order: nextSort, active: true }),
+        body: JSON.stringify({ title, artist, storage_path: blob.url, credit, duration_seconds: 0, bytes: fileBuffer.length, sort_order: nextSort, active: true }),
       });
       const rows2 = await response.json() as JsonRecord[];
       return json(res, { ok: true, track: rows2[0] ?? null });

@@ -201,12 +201,21 @@ export default function LofiAdmin({ onBack }: { onBack: () => void }) {
                 <button className="btn btn-primary btn-sm" disabled={uploading || !uploadFile || !trackDraft.title} onClick={() => void (async () => {
                   setUploading(true); setMessage('');
                   try {
-                    const fd = new FormData();
-                    fd.append('file', uploadFile!);
-                    fd.append('title', trackDraft.title ?? '');
-                    fd.append('artist', trackDraft.artist ?? 'Unknown');
-                    fd.append('credit', trackDraft.credit ?? '');
-                    const resp = await fetch(`${api}?action=track_upload`, { method: 'POST', headers: { 'x-lofi-token': token }, body: fd });
+                    // Read file as base64
+                    const arrayBuf = await uploadFile!.arrayBuffer();
+                    const b64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuf)));
+                    const resp = await fetch(`${api}?action=track_upload`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'x-lofi-token': token },
+                      body: JSON.stringify({
+                        file: b64,
+                        filename: uploadFile!.name,
+                        mimeType: uploadFile!.type || 'audio/mpeg',
+                        title: trackDraft.title ?? '',
+                        artist: trackDraft.artist ?? 'Unknown',
+                        credit: trackDraft.credit ?? '',
+                      }),
+                    });
                     const payload = await resp.json() as { error?: string };
                     if (!resp.ok) throw new Error(payload.error || 'Upload failed');
                     setTrackDraft({}); setUploadFile(null);
