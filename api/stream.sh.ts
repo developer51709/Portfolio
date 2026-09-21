@@ -39,6 +39,9 @@ OVERLAY_TEXT="$(value overlay.text)"
 CREDIT_TEXT="$(value lofi.credit_text)"
 SAFE_TEXT=""
 SAFE_CREDIT=""
+OVERLAY_FILE="$WORK/overlay.txt"
+CREDIT_FILE="$WORK/credit.txt"
+TRACK_VERSION=""
 
 [ -n "$RTMP" ] && [ -n "$KEY" ] || { echo "Configure the Twitch RTMP URL and stream key in the admin page first."; exit 1; }
 
@@ -72,7 +75,10 @@ for i,t in enumerate(lib):
       continue
   with open(os.path.join(md, f"{i:04d}.json"),"w") as f:
     json.dump({"title":t.get("title",""),"artist":t.get("artist",""),"credit":t.get("credit","")}, f)
-  with open(pf,"a") as f: print(os.path.abspath(out), file=f)
+  with open(pf,"a") as f:
+    # The downloaded paths are temporary and contain no shell metacharacters;
+    # quote them in concat-demuxer format so FFmpeg reads each as one filename.
+    print("file '" + os.path.abspath(out).replace("'", "'\\\\''") + "'", file=f)
 DL
   grep -c "^file " "$PLAYLIST" 2>/dev/null || echo 0
 }
@@ -82,24 +88,36 @@ TRACK_COUNT=$(wc -l < "$PLAYLIST" 2>/dev/null | tr -d ' ')
 echo "Downloaded $TRACK_COUNT tracks."
 
 # ── Build FFmpeg overlay filter chain ─────────────────────────────
-build_filters(){
-  local f=""
-  f="drawbox=x=0:y=ih-120:w=iw:h=120:color=black@0.55:t=fill"
-  if [ -n "\${SAFE_TEXT}" ]; then
-    f="\${f},drawtext=text='\${SAFE_TEXT}':fontcolor=white:fontsize=36:x=40:y=h-100:font=Sans:borderw=2:bordercolor=black@0.6"
-  fi
-  if [ -n "\${SAFE_CREDIT}" ]; then
-    f="\${f},drawtext=text='\${SAFE_CREDIT}':fontcolor=white@0.7:fontsize=22:x=40:y=h-55:font=Sans:borderw=1:bordercolor=black@0.4"
-  fi
-  if [ -f "\${WORK}/track_label.txt" ]; then
-    f="\${f},drawtext=textfile=\${WORK}/track_label.txt:fontcolor=white:fontsize=28:x=w-tw-40:y=h-95:font=Sans:borderw=2:bordercolor=black@0.5"
-  fi
-  printf '%s' "\${f}"
+write_overlay_files(){
+  # FFmpeg's drawtext reload=1 rereads these files while the process runs.
+  # Updating them does not interrupt the RTMP connection or audio stream.
+  printf '%s' "\${OVERLAY_TEXT}" > "\${OVERLAY_FILE}.tmp"
+  mv -f "\${OVERLAY_FILE}.tmp" "\${OVERLAY_FILE}"
+  printf '%s' "\${CREDIT_TEXT}" > "\${CREDIT_FILE}.tmp"
+  mv -f "\${CREDIT_FILE}.tmp" "\${CREDIT_FILE}"
 }
 
-# ── Restart FFmpeg when admin settings change ─────────────────────
+track_signature(){
+  python3 - "\${CONFIG}" <<'PY'
+import hashlib,json,sys
+with open(sys.argv[1]) as f: cfg=json.load(f)
+tracks=cfg.get('track',{}).get('library',[])
+identity=[{
+  'id': t.get('id',''),
+  'storage_path': t.get('storage_path',''),
+  'sort_order': t.get('sort_order',0),
+  'active': t.get('active',True),
+} for t in tracks]
+print(hashlib.sha256(json.dumps(identity,sort_keys=True,separators=(',',':')).encode()).hexdigest())
+PY
+}
+
+build_filters(){
+  printf '%s' "drawbox=x=0:y=ih-120:w=iw:h=120:color=black@0.55:t=fill,drawtext=textfile=\${OVERLAY_FILE}:reload=1:fontcolor=white:fontsize=36:x=40:y=h-100:font=Sans:borderw=2:bordercolor=black@0.6,drawtext=textfile=\${CREDIT_FILE}:reload=1:fontcolor=white@0.7:fontsize=22:x=40:y=h-55:font=Sans:borderw=1:bordercolor=black@0.4"
+}
+
+# ── Restart FFmpeg only when the track playlist changes ───────────
 FFMPEG_PID=""
-CONFIG_VERSION=""
 RESTART_REQUESTED=0
 run_ffmpeg(){
   ffmpeg "$@" &
@@ -107,9 +125,13 @@ run_ffmpeg(){
   while kill -0 "$FFMPEG_PID" 2>/dev/null; do
     sleep 5
     if ! fetch_config; then continue; fi
-    NEW_VERSION="$(value updated_at)"
-    if [ -n "$NEW_VERSION" ] && [ "$NEW_VERSION" != "$CONFIG_VERSION" ]; then
-      echo "Configuration changed in admin panel; restarting FFmpeg..."
+    # Overlay files are hot-reloaded by FFmpeg; no process restart is needed.
+    OVERLAY_TEXT="$(value overlay.text)"
+    CREDIT_TEXT="$(value lofi.credit_text)"
+    write_overlay_files
+    NEW_TRACK_VERSION="$(track_signature)"
+    if [ -n "$NEW_TRACK_VERSION" ] && [ "$NEW_TRACK_VERSION" != "$TRACK_VERSION" ]; then
+      echo "Track playlist changed; rebuilding the audio playlist..."
       RESTART_REQUESTED=1
       kill "$FFMPEG_PID" 2>/dev/null || true
       break
@@ -119,43 +141,35 @@ run_ffmpeg(){
   FFMPEG_PID=""
 }
 
-# ── Play a single track with overlay ──────────────────────────────
-play_track(){
-  local track_url="\$1" idx="\$2"
-  SAFE_CREDIT=\$(escape_dt "\${CREDIT_TEXT}")
-  local meta="\${META_DIR}/\$(printf '%04d' "\$idx").json"
-  if [ -f "\$meta" ]; then
-    local title artist credit
-    title=\$(python3 -c "import json; print(json.load(open('\$meta')).get('title',''))")
-    artist=\$(python3 -c "import json; print(json.load(open('\$meta')).get('artist',''))")
-    credit=\$(python3 -c "import json; print(json.load(open('\$meta')).get('credit',''))")
-    printf '%s' "\${title} — \${artist}" > "\${WORK}/track_label.txt"
-    [ -n "\$credit" ] && SAFE_CREDIT=\$(escape_dt "\$credit")
-  fi
-
-  SAFE_TEXT=\$(escape_dt "\${OVERLAY_TEXT}")
+# ── Play the complete playlist in one continuous stream ───────────
+play_playlist(){
+  write_overlay_files
   local FILTERS
   FILTERS=\$(build_filters)
 
-  local VIDEO
+  echo "[\$(date +%H:%M:%S)] Playing \${TRACK_COUNT} tracks in one continuous stream"
+
   if [ -n "\${BG}" ]; then
-    VIDEO=(-stream_loop -1 -re -i "\${BG}")
+    run_ffmpeg -hide_banner -loglevel error \\
+      -stream_loop -1 -re -i "\${BG}" \\
+      -stream_loop -1 -f concat -safe 0 -i "\${PLAYLIST}" \\
+      -map 0:v -map 1:a \\
+      -vf "\${FILTERS}" \\
+      -c:v libx264 -preset "\${PRESET}" -b:v "\${VBR}" -maxrate "\${VBR}" -bufsize 9000k \\
+      -pix_fmt yuv420p -r "\${FPS}" -g \$((FPS * 2)) \\
+      -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
+      -f flv "\${RTMP%/}/\${KEY}" || true
   else
-    VIDEO=(-f lavfi -i "color=c=0x0b0b11:s=\${RES}:r=\${FPS}")
+    run_ffmpeg -hide_banner -loglevel error \\
+      -f lavfi -i "color=c=0x0b0b11:s=\${RES}:r=\${FPS}" \\
+      -stream_loop -1 -f concat -safe 0 -i "\${PLAYLIST}" \\
+      -map 0:v -map 1:a \\
+      -vf "\${FILTERS}" \\
+      -c:v libx264 -preset "\${PRESET}" -b:v "\${VBR}" -maxrate "\${VBR}" -bufsize 9000k \\
+      -pix_fmt yuv420p -r "\${FPS}" -g \$((FPS * 2)) \\
+      -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
+      -f flv "\${RTMP%/}/\${KEY}" || true
   fi
-
-  echo "[\$(date +%H:%M:%S)] Playing #\$((idx+1)): \$(cat "\${WORK}/track_label.txt" 2>/dev/null || echo 'unknown')"
-
-  run_ffmpeg -hide_banner -loglevel error \\
-    "\${VIDEO[@]}" \\
-    -i "\${track_url}" \\
-    -map 0:v -map 1:a \\
-    -vf "\${FILTERS}" \\
-    -c:v libx264 -preset "\${PRESET}" -b:v "\${VBR}" -maxrate "\${VBR}" -bufsize 9000k \\
-    -pix_fmt yuv420p -r "\${FPS}" -g \$((FPS * 2)) \\
-    -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
-    -shortest \\
-    -f flv "\${RTMP%/}/\${KEY}" || true
 }
 
 echo "Starting the self-contained FFmpeg host. OBS/browser source is not used."
@@ -164,26 +178,17 @@ while :; do
   fetch_config || true
   RTMP="\$(value stream.rtmp_url)"; KEY="\$(value stream.stream_key)"; BG="\$(value background_video_url)"
   OVERLAY_TEXT="\$(value overlay.text)"; CREDIT_TEXT="\$(value lofi.credit_text)"
-  CONFIG_VERSION="\$(value updated_at)"
+  TRACK_VERSION=\$(track_signature)
+  write_overlay_files
   RESTART_REQUESTED=0
 
   download_tracks
   TRACK_COUNT=\$(wc -l < "\${PLAYLIST}" 2>/dev/null | tr -d ' ')
 
   if [ "\${TRACK_COUNT}" -gt 0 ]; then
-    mapfile -t TRACK_PATHS < "\${PLAYLIST}"
-    IDX=0
-    for TRACK_URL in "\${TRACK_PATHS[@]}"; do
-      [ -n "\${TRACK_URL}" ] || continue
-      if [ ! -f "\${TRACK_URL}" ]; then
-        echo "Skipping missing downloaded track: \${TRACK_URL}"
-        IDX=\$((IDX + 1))
-        continue
-      fi
-      play_track "\${TRACK_URL}" "\${IDX}"
-      if [ "\${RESTART_REQUESTED}" -eq 1 ]; then break; fi
-      IDX=\$((IDX + 1))
-    done
+    # Keep one FFmpeg/RTMP session alive across every track transition.
+    # run_ffmpeg interrupts this process only when the admin config changes.
+    play_playlist
   else
     # No tracks — play with silence and overlay
     SAFE_TEXT=\$(escape_dt "\${OVERLAY_TEXT}")
