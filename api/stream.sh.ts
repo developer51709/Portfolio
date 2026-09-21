@@ -41,7 +41,8 @@ CREDIT_TEXT="$(value lofi.credit_text)"
 [ -n "$RTMP" ] && [ -n "$KEY" ] || { echo "Configure the Twitch RTMP URL and stream key in the admin page first."; exit 1; }
 
 # ── Escape helper for FFmpeg drawtext ─────────────────────────────
-escape_dt(){ printf '%s' "$1" | sed "s/\\\\/\\\\\\\\\\\\\\\\/g; s/:/\\\\\\\\:/g; s/'/\\\\\\\\'/g"; }
+# Python avoids nested shell/sed escaping issues.
+escape_dt(){ python3 -c "import sys; t=sys.argv[1]; print(t.replace(chr(92),chr(92)*2).replace(':',chr(92)+':').replace(chr(39),chr(92)+chr(39)))" "$1"; }
 
 # ── Download track library ────────────────────────────────────────
 TRACKS_DIR="$WORK/tracks"; mkdir -p "$TRACKS_DIR"
