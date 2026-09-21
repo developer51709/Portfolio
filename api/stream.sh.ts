@@ -146,7 +146,7 @@ play_track(){
 
   echo "[\$(date +%H:%M:%S)] Playing #\$((idx+1)): \$(cat "\${WORK}/track_label.txt" 2>/dev/null || echo 'unknown')"
 
-  run_ffmpeg -hide_banner -loglevel warning \\
+  run_ffmpeg -hide_banner -loglevel error \\
     "\${VIDEO[@]}" \\
     -i "\${track_url}" \\
     -map 0:v -map 1:a \\
