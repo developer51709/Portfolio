@@ -171,9 +171,10 @@ while :; do
   TRACK_COUNT=\$(wc -l < "\${PLAYLIST}" 2>/dev/null | tr -d ' ')
 
   if [ "\${TRACK_COUNT}" -gt 0 ]; then
+    mapfile -t TRACK_PATHS < "\${PLAYLIST}"
     IDX=0
-    while IFS= read -r line; do
-      TRACK_URL="\${line}"
+    for TRACK_URL in "\${TRACK_PATHS[@]}"; do
+      [ -n "\${TRACK_URL}" ] || continue
       if [ ! -f "\${TRACK_URL}" ]; then
         echo "Skipping missing downloaded track: \${TRACK_URL}"
         IDX=\$((IDX + 1))
@@ -182,7 +183,7 @@ while :; do
       play_track "\${TRACK_URL}" "\${IDX}"
       if [ "\${RESTART_REQUESTED}" -eq 1 ]; then break; fi
       IDX=\$((IDX + 1))
-    done < "\${PLAYLIST}"
+    done
   else
     # No tracks — play with silence and overlay
     SAFE_TEXT=\$(escape_dt "\${OVERLAY_TEXT}")
