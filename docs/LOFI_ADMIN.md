@@ -11,11 +11,16 @@ The Vercel deployment needs these environment variables:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only; never expose this to the browser
-- `LOFI_ADMIN_SECRET` — recommended admin phrase; if omitted, the existing
-  `settings.secret_phrase` database value is used for compatibility
+- `LOFI_ADMIN_SECRET` — admin phrase used for login and first-time setup
+- `SUPABASE_ACCESS_TOKEN` — Supabase Management API token used only to apply the
+  Lofi schema automatically when the REST tables are missing
+- `SUPABASE_PROJECT_REF` — optional when it can be derived from `SUPABASE_URL`
 
-The Supabase schema is the one in `twitch-lofi/supabase/migrations/`. Apply it
-to the Supabase project used by the deployment before opening the admin page.
+On the first request, the API checks for the Lofi settings table. If it is
+missing, it applies an idempotent equivalent of the migrations in
+`twitch-lofi/supabase/migrations/` through the Supabase Management API, then
+retries the request. This requires `SUPABASE_ACCESS_TOKEN`; the Supabase
+service-role key can access tables but cannot create database schema objects.
 
 ## Usage
 

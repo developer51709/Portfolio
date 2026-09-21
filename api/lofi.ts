@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { bootstrapLofiSchema } from '../api-lib/lofi-schema.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -88,24 +89,30 @@ function json(res: VercelResponse, value: unknown, status = 200) {
   return res.status(status).json(value);
 }
 
-async function settings() {
-  const result = await rows<Settings>('settings?id=eq.1&select=*');
-  if (result[0]) return result[0];
+let schemaBootstrapPromise: Promise<void> | null = null;
 
-  // The migration seeds this singleton row, but a newly connected Supabase
-  // project may have the table without the seed. Bootstrap it once when the
-  // deployment secret is present instead of reporting a misleading config error.
-  const adminSecret = process.env.LOFI_ADMIN_SECRET;
-  if (!adminSecret) {
-    throw new Error('Lofi settings row is missing. Apply the Twitch Lofi Supabase migrations, then configure LOFI_ADMIN_SECRET.');
+async function settings() {
+  try {
+    const result = await rows<Settings>('settings?id=eq.1&select=*');
+    if (result[0]) return result[0];
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes('Supabase Lofi schema is missing')) throw error;
   }
-  await db('settings', {
-    method: 'POST',
-    headers: { Prefer: 'return=minimal' },
-    body: JSON.stringify({ id: 1, secret_phrase: adminSecret }),
-  });
+
+  schemaBootstrapPromise ??= bootstrapLofiSchema();
+  await schemaBootstrapPromise;
+
+  const adminSecret = process.env.LOFI_ADMIN_SECRET;
+  const result = await rows<Settings>('settings?id=eq.1&select=*');
+  if (!result[0]) {
+    await db('settings', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ id: 1, secret_phrase: adminSecret || 'change-me-now' }),
+    });
+  }
   const bootstrapped = await rows<Settings>('settings?id=eq.1&select=*');
-  if (!bootstrapped[0]) throw new Error('Lofi settings could not be initialized. Check that the Supabase service-role key can write to the settings table.');
+  if (!bootstrapped[0]) throw new Error('Lofi settings could not be initialized after schema setup.');
   return bootstrapped[0];
 }
 
