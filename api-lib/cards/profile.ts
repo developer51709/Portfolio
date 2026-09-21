@@ -84,7 +84,7 @@ const LUCIDE = {
 type StatIcon = keyof typeof LUCIDE;
 
 function stat(x: number, label: string, value: string, accent: string, icon: StatIcon) {
-  return `<g transform="translate(${x},0)"><circle cx="14" cy="18" r="14" fill="${accent}26"/><svg x="6" y="10" width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="${accent}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${LUCIDE[icon]}</g></svg><text x="38" y="17" font-family="${FONT}" font-size="10" letter-spacing="1.2" fill="${MUTED}">${esc(label.toUpperCase())}</text><text x="38" y="40" font-family="${FONT}" font-size="19" font-weight="700" fill="${TEXT}">${esc(value)}</text></g>`;
+  return `<g transform="translate(${x},66)"><circle cx="14" cy="18" r="14" fill="${accent}26"/><svg x="6" y="10" width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="${accent}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${LUCIDE[icon]}</g></svg><text x="38" y="17" font-family="${FONT}" font-size="10" letter-spacing="1.2" fill="${MUTED}">${esc(label.toUpperCase())}</text><text x="38" y="40" font-family="${FONT}" font-size="19" font-weight="700" fill="${TEXT}">${esc(value)}</text></g>`;
 }
 
 function project(x: number, y: number, repo: Repo, color: string) {
