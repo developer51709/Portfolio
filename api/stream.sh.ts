@@ -97,6 +97,28 @@ build_filters(){
   printf '%s' "\${f}"
 }
 
+# ── Restart FFmpeg when admin settings change ─────────────────────
+FFMPEG_PID=""
+CONFIG_VERSION=""
+RESTART_REQUESTED=0
+run_ffmpeg(){
+  ffmpeg "$@" &
+  FFMPEG_PID=$!
+  while kill -0 "$FFMPEG_PID" 2>/dev/null; do
+    sleep 5
+    if ! fetch_config; then continue; fi
+    NEW_VERSION="$(value updated_at)"
+    if [ -n "$NEW_VERSION" ] && [ "$NEW_VERSION" != "$CONFIG_VERSION" ]; then
+      echo "Configuration changed in admin panel; restarting FFmpeg..."
+      RESTART_REQUESTED=1
+      kill "$FFMPEG_PID" 2>/dev/null || true
+      break
+    fi
+  done
+  wait "$FFMPEG_PID" 2>/dev/null || true
+  FFMPEG_PID=""
+}
+
 # ── Play a single track with overlay ──────────────────────────────
 play_track(){
   local track_url="\$1" idx="\$2"
@@ -124,7 +146,7 @@ play_track(){
 
   echo "[\$(date +%H:%M:%S)] Playing #\$((idx+1)): \$(cat "\${WORK}/track_label.txt" 2>/dev/null || echo 'unknown')"
 
-  ffmpeg -hide_banner -loglevel warning \\
+  run_ffmpeg -hide_banner -loglevel warning \\
     "\${VIDEO[@]}" \\
     -i "\${track_url}" \\
     -map 0:v -map 1:a \\
@@ -141,6 +163,8 @@ while :; do
   fetch_config || true
   RTMP="\$(value stream.rtmp_url)"; KEY="\$(value stream.stream_key)"; BG="\$(value background_video_url)"
   OVERLAY_TEXT="\$(value overlay.text)"; CREDIT_TEXT="\$(value lofi.credit_text)"
+  CONFIG_VERSION="\$(value updated_at)"
+  RESTART_REQUESTED=0
 
   download_tracks
   TRACK_COUNT=\$(wc -l < "\${PLAYLIST}" 2>/dev/null | tr -d ' ')
@@ -150,6 +174,7 @@ while :; do
     while IFS= read -r line; do
       TRACK_URL=\$(printf '%s' "\$line" | python3 -c "import sys; line=sys.stdin.read().strip(); print(line[6:-1] if line.startswith(\"file '\") and line.endswith(\"'\") else line)")
       play_track "\${TRACK_URL}" "\${IDX}"
+      if [ "\${RESTART_REQUESTED}" -eq 1 ]; then break; fi
       IDX=\$((IDX + 1))
     done < "\${PLAYLIST}"
   else
@@ -158,7 +183,7 @@ while :; do
     SAFE_CREDIT=\$(escape_dt "\${CREDIT_TEXT}")
     FILTERS=\$(build_filters)
     if [ -n "\${BG}" ]; then
-      ffmpeg -hide_banner -loglevel warning \\
+      run_ffmpeg -hide_banner -loglevel warning \\
         -stream_loop -1 -re -i "\${BG}" \\
         -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \\
         -map 0:v -map 1:a \\
@@ -168,7 +193,7 @@ while :; do
         -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
         -f flv "\${RTMP%/}/\${KEY}" || true
     else
-      ffmpeg -hide_banner -loglevel warning \\
+      run_ffmpeg -hide_banner -loglevel warning \\
         -f lavfi -i "color=c=0x0b0b11:s=\${RES}:r=\${FPS}" \\
         -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \\
         -map 0:v -map 1:a \\

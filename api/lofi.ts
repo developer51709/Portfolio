@@ -202,6 +202,14 @@ function cleanPatch(input: JsonRecord) {
   return patch;
 }
 
+async function touchSettings() {
+  await db('settings?id=eq.1', {
+    method: 'PATCH',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify({ updated_at: new Date().toISOString() }),
+  });
+}
+
 async function adminData() {
   const [config, ads, donations, logs, tracks] = await Promise.all([
     settings(),
@@ -334,6 +342,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         body: JSON.stringify({ title, artist, storage_path: blob.url, credit, duration_seconds: 0, bytes: fileBuffer.length, sort_order: nextSort, active: true }),
       });
       const rows2 = await response.json() as JsonRecord[];
+      await touchSettings();
       return json(res, { ok: true, track: rows2[0] ?? null });
     }
     if (action === 'track_add' && req.method === 'POST') {
@@ -354,6 +363,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         body: JSON.stringify({ title, artist, storage_path, credit, duration_seconds, sort_order: nextSort, active: true }),
       });
       const inserted = await response.json() as JsonRecord[];
+      await touchSettings();
       return json(res, { ok: true, track: inserted[0] ?? null });
     }
     if (action === 'track_update' && req.method === 'POST') {
@@ -370,6 +380,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (typeof input.active === 'boolean') patch.active = input.active;
       if (!Object.keys(patch).length) return json(res, { error: 'No fields to update' }, 400);
       await db(`tracks?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(patch) });
+      await touchSettings();
       return json(res, { ok: true });
     }
     if (action === 'track_delete' && req.method === 'POST') {
@@ -377,6 +388,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const id = typeof input.id === 'string' ? input.id : '';
       if (!/^[0-9a-f-]{36}$/i.test(id)) return json(res, { error: 'Invalid track ID' }, 400);
       await db(`tracks?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await touchSettings();
       return json(res, { ok: true });
     }
     return json(res, { error: 'Unknown action' }, 404);
