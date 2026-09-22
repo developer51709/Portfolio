@@ -207,7 +207,7 @@ prepare_sponsor(){
     local qr_url
     qr_url=\$(python3 - "\${SPONSOR_URL}" <<'PY'
 import sys,urllib.parse
-print('https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + urllib.parse.quote(sys.argv[1], safe=''))
+print('https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=' + urllib.parse.quote(sys.argv[1], safe=''))
 PY
 )
     if curl -fsSL --max-time 20 "\${qr_url}" -o "\${QR_FILE}"; then
@@ -236,7 +236,7 @@ PY
 build_filters(){
   local f="drawbox=x=0:y=ih-120:w=iw:h=120:color=black@0.55:t=fill,drawtext=textfile=\${OVERLAY_FILE}:reload=1:fontcolor=white:fontsize=36:x=40:y=h-105:font=Sans:borderw=2:bordercolor=black@0.6,drawtext=textfile=\${SUBTITLE_FILE}:reload=1:fontcolor=white@0.85:fontsize=26:x=40:y=h-68:font=Sans:borderw=1:bordercolor=black@0.5,drawtext=textfile=\${CREDIT_FILE}:reload=1:fontcolor=white@0.7:fontsize=18:x=40:y=h-28:font=Sans:borderw=1:bordercolor=black@0.4,drawtext=textfile=\${TRACK_LABEL_FILE}:reload=1:fontcolor=white:fontsize=28:x=w-tw-40:y=h-95:font=Sans:borderw=2:bordercolor=black@0.5"
   if [ "\${SPONSOR_ENABLED}" = "true" ] && [ -f "\${QR_FILE}" ]; then
-    f="\${f},drawbox=x=iw-270:y=20:w=250:h=220:color=black@0.75:t=fill,drawtext=textfile=\${SPONSOR_TITLE_FILE}:reload=1:fontcolor=white:fontsize=20:x=w-258:y=48:font=Sans:borderw=1:bordercolor=black@0.7"
+    f="\${f},drawbox=x=iw-200:y=20:w=180:h=170:color=black@0.75:t=fill,drawtext=textfile=\${SPONSOR_TITLE_FILE}:reload=1:fontcolor=white:fontsize=18:x=w-188:y=45:font=Sans:borderw=1:bordercolor=black@0.7"
   fi
   printf '%s' "\${f}"
 }
@@ -351,8 +351,11 @@ run_ffmpeg(){
     fi
     NEW_SPONSOR_VERSION="$(sponsor_signature)"
     if [ -n "$NEW_SPONSOR_VERSION" ] && [ "$NEW_SPONSOR_VERSION" != "$SPONSOR_VERSION" ]; then
-      kill "$FFMPEG_PID" 2>/dev/null || true
-      break
+      # Refresh sponsor assets in place. The running FFmpeg filter reads the
+      # title file with reload=1, and the looped image input reopens the QR
+      # asset without interrupting the RTMP connection.
+      prepare_sponsor
+      SPONSOR_VERSION="$NEW_SPONSOR_VERSION"
     fi
   done
   wait "$FFMPEG_PID" 2>/dev/null || true
@@ -369,8 +372,8 @@ play_playlist(){
   local QR_ARGS=() FILTER_ARGS=()
   FILTERS=\$(build_filters)
   if [ "\${SPONSOR_ENABLED}" = "true" ] && [ -f "\${QR_FILE}" ]; then
-    QR_ARGS=(-loop 1 -i "\${QR_FILE}")
-    FILTER_ARGS=(-filter_complex "[0:v]\${FILTERS}[base];[2:v]format=rgba[qr];[base][qr]overlay=W-255:35[v]" -map "[v]" -map 1:a)
+    QR_ARGS=(-stream_loop -1 -re -i "\${QR_FILE}")
+    FILTER_ARGS=(-filter_complex "[0:v]\${FILTERS}[base];[2:v]format=rgba[qr];[base][qr]overlay=W-150:65[v]" -map "[v]" -map 1:a)
   else
     FILTER_ARGS=(-map 0:v -map 1:a -vf "\${FILTERS}")
   fi
@@ -427,8 +430,8 @@ while :; do
     FILTERS=\$(build_filters)
     QR_ARGS=(); FILTER_ARGS=()
     if [ "\${SPONSOR_ENABLED}" = "true" ] && [ -f "\${QR_FILE}" ]; then
-      QR_ARGS=(-loop 1 -i "\${QR_FILE}")
-      FILTER_ARGS=(-filter_complex "[0:v]\${FILTERS}[base];[2:v]format=rgba[qr];[base][qr]overlay=W-255:35[v]" -map "[v]" -map 1:a)
+      QR_ARGS=(-stream_loop -1 -re -i "\${QR_FILE}")
+      FILTER_ARGS=(-filter_complex "[0:v]\${FILTERS}[base];[2:v]format=rgba[qr];[base][qr]overlay=W-150:65[v]" -map "[v]" -map 1:a)
     else
       FILTER_ARGS=(-map 0:v -map 1:a -vf "\${FILTERS}")
     fi
