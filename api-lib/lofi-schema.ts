@@ -8,7 +8,7 @@ const SCHEMA_STATEMENTS = [
     secret_phrase text not null default 'change-me-now',
     oxapay_merchant_key text not null default '',
     overlay_text text not null default 'Lofi radio 24/7',
-    overlay_settings jsonb not null default '{"show_qr": true, "show_ads": true, "refresh_seconds": 10, "theme": "dark"}'::jsonb,
+    overlay_settings jsonb not null default '{"show_qr": true, "show_ads": true, "refresh_seconds": 10, "theme": "dark", "subtitle": "", "sponsor_enabled": false, "sponsor_title": "", "sponsor_url": ""}'::jsonb,
     stream_settings jsonb not null default '{"rtmp_url": "rtmps://live.twitch.tv:443/app", "stream_key": "", "resolution": "1920x1080", "fps": 30, "video_bitrate": "4500k", "audio_bitrate": "160k", "preset": "veryfast"}'::jsonb,
     track_metadata jsonb not null default '{"title": "Untitled", "artist": "", "album": "", "playlist_url": ""}'::jsonb,
     crypto_wallets jsonb not null default '[]'::jsonb,

@@ -107,13 +107,21 @@ VBR="$(value stream.video_bitrate)"; VBR="\${VBR:-4500k}"
 ABR="$(value stream.audio_bitrate)"; ABR="\${ABR:-160k}"
 PRESET="$(value stream.preset)"; PRESET="\${PRESET:-veryfast}"
 OVERLAY_TEXT="$(value overlay.text)"
+SUBTITLE_TEXT="$(value overlay.subtitle)"
+SPONSOR_ENABLED="$(value overlay.sponsor_enabled)"
+SPONSOR_TITLE="$(value overlay.sponsor_title)"
+SPONSOR_URL="$(value overlay.sponsor_url)"
 CREDIT_TEXT="$(value lofi.credit_text)"
 SAFE_TEXT=""
 SAFE_CREDIT=""
 OVERLAY_FILE="$WORK/overlay.txt"
+SUBTITLE_FILE="$WORK/subtitle.txt"
+SPONSOR_TITLE_FILE="$WORK/sponsor-title.txt"
+QR_FILE="$WORK/sponsor-qr.png"
 CREDIT_FILE="$WORK/credit.txt"
 TRACK_LABEL_FILE="$WORK/track-label.txt"
 TRACK_VERSION=""
+SPONSOR_VERSION=""
 LABEL_PID=""
 FEED_AUDIO=0
 : > "$TRACK_LABEL_FILE"
@@ -169,8 +177,38 @@ write_overlay_files(){
   # Updating them does not interrupt the RTMP connection or audio stream.
   printf '%s' "\${OVERLAY_TEXT}" > "\${OVERLAY_FILE}.tmp"
   mv -f "\${OVERLAY_FILE}.tmp" "\${OVERLAY_FILE}"
+  printf '%s' "\${SUBTITLE_TEXT}" > "\${SUBTITLE_FILE}.tmp"
+  mv -f "\${SUBTITLE_FILE}.tmp" "\${SUBTITLE_FILE}"
   printf '%s' "\${CREDIT_TEXT}" > "\${CREDIT_FILE}.tmp"
   mv -f "\${CREDIT_FILE}.tmp" "\${CREDIT_FILE}"
+}
+
+sponsor_signature(){
+  python3 - "\${CONFIG}" <<'PY'
+import hashlib,json,sys
+with open(sys.argv[1]) as f: cfg=json.load(f)
+overlay=cfg.get('overlay',{})
+value={k: overlay.get(k,'') for k in ('sponsor_enabled','sponsor_title','sponsor_url')}
+print(hashlib.sha256(json.dumps(value,sort_keys=True).encode()).hexdigest())
+PY
+}
+
+prepare_sponsor(){
+  : > "\${SPONSOR_TITLE_FILE}"
+  rm -f "\${QR_FILE}"
+  if [ "\${SPONSOR_ENABLED}" = "true" ] && [ -n "\${SPONSOR_URL}" ]; then
+    local qr_url
+    qr_url=\$(python3 - "\${SPONSOR_URL}" <<'PY'
+import sys,urllib.parse
+print('https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + urllib.parse.quote(sys.argv[1], safe=''))
+PY
+)
+    if curl -fsSL --max-time 20 "\${qr_url}" -o "\${QR_FILE}"; then
+      printf '%s' "\${SPONSOR_TITLE:-Support the stream}" > "\${SPONSOR_TITLE_FILE}"
+    else
+      SPONSOR_ENABLED=false
+    fi
+  fi
 }
 
 track_signature(){
@@ -189,7 +227,11 @@ PY
 }
 
 build_filters(){
-  printf '%s' "drawbox=x=0:y=ih-120:w=iw:h=120:color=black@0.55:t=fill,drawtext=textfile=\${OVERLAY_FILE}:reload=1:fontcolor=white:fontsize=36:x=40:y=h-100:font=Sans:borderw=2:bordercolor=black@0.6,drawtext=textfile=\${CREDIT_FILE}:reload=1:fontcolor=white@0.7:fontsize=22:x=40:y=h-55:font=Sans:borderw=1:bordercolor=black@0.4,drawtext=textfile=\${TRACK_LABEL_FILE}:reload=1:fontcolor=white:fontsize=28:x=w-tw-40:y=h-95:font=Sans:borderw=2:bordercolor=black@0.5"
+  local f="drawbox=x=0:y=ih-120:w=iw:h=120:color=black@0.55:t=fill,drawtext=textfile=\${OVERLAY_FILE}:reload=1:fontcolor=white:fontsize=36:x=40:y=h-105:font=Sans:borderw=2:bordercolor=black@0.6,drawtext=textfile=\${SUBTITLE_FILE}:reload=1:fontcolor=white@0.85:fontsize=26:x=40:y=h-68:font=Sans:borderw=1:bordercolor=black@0.5,drawtext=textfile=\${CREDIT_FILE}:reload=1:fontcolor=white@0.7:fontsize=18:x=40:y=h-28:font=Sans:borderw=1:bordercolor=black@0.4,drawtext=textfile=\${TRACK_LABEL_FILE}:reload=1:fontcolor=white:fontsize=28:x=w-tw-40:y=h-95:font=Sans:borderw=2:bordercolor=black@0.5"
+  if [ "\${SPONSOR_ENABLED}" = "true" ] && [ -f "\${QR_FILE}" ]; then
+    f="\${f},drawbox=x=iw-270:y=20:w=250:h=220:color=black@0.75:t=fill,drawtext=textfile=\${SPONSOR_TITLE_FILE}:reload=1:fontcolor=white:fontsize=20:x=w-258:y=48:font=Sans:borderw=1:bordercolor=black@0.7"
+  fi
+  printf '%s' "\${f}"
 }
 
 start_audio_feeder(){
@@ -289,12 +331,21 @@ run_ffmpeg(){
     if ! fetch_config; then continue; fi
     # Overlay files are hot-reloaded by FFmpeg; no process restart is needed.
     OVERLAY_TEXT="$(value overlay.text)"
+    SUBTITLE_TEXT="$(value overlay.subtitle)"
+    SPONSOR_ENABLED="$(value overlay.sponsor_enabled)"
+    SPONSOR_TITLE="$(value overlay.sponsor_title)"
+    SPONSOR_URL="$(value overlay.sponsor_url)"
     CREDIT_TEXT="$(value lofi.credit_text)"
     write_overlay_files
     NEW_TRACK_VERSION="$(track_signature)"
     if [ -n "$NEW_TRACK_VERSION" ] && [ "$NEW_TRACK_VERSION" != "$TRACK_VERSION" ]; then
       download_tracks
       TRACK_VERSION="$NEW_TRACK_VERSION"
+    fi
+    NEW_SPONSOR_VERSION="$(sponsor_signature)"
+    if [ -n "$NEW_SPONSOR_VERSION" ] && [ "$NEW_SPONSOR_VERSION" != "$SPONSOR_VERSION" ]; then
+      kill "$FFMPEG_PID" 2>/dev/null || true
+      break
     fi
   done
   wait "$FFMPEG_PID" 2>/dev/null || true
@@ -308,7 +359,14 @@ play_playlist(){
   write_overlay_files
   FEED_AUDIO=1
   local FILTERS
+  local QR_ARGS=() FILTER_ARGS=()
   FILTERS=\$(build_filters)
+  if [ "\${SPONSOR_ENABLED}" = "true" ] && [ -f "\${QR_FILE}" ]; then
+    QR_ARGS=(-loop 1 -i "\${QR_FILE}")
+    FILTER_ARGS=(-filter_complex "[0:v]\${FILTERS}[base];[2:v]format=rgba[qr];[base][qr]overlay=W-255:35[v]" -map "[v]" -map 1:a)
+  else
+    FILTER_ARGS=(-map 0:v -map 1:a -vf "\${FILTERS}")
+  fi
 
   echo "[\$(date +%H:%M:%S)] Playing \${TRACK_COUNT} tracks in one continuous stream"
 
@@ -316,8 +374,8 @@ play_playlist(){
     run_ffmpeg -hide_banner -loglevel error \\
       -stream_loop -1 -re -i "\${BG}" \\
       -f s16le -ar 44100 -ac 2 -i "\${AUDIO_PIPE}" \\
-      -map 0:v -map 1:a \\
-      -vf "\${FILTERS}" \\
+      "\${QR_ARGS[@]}" \\
+      "\${FILTER_ARGS[@]}" \\
       -c:v libx264 -preset "\${PRESET}" -b:v "\${VBR}" -maxrate "\${VBR}" -bufsize 9000k \\
       -pix_fmt yuv420p -r "\${FPS}" -g \$((FPS * 2)) \\
       -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
@@ -326,8 +384,8 @@ play_playlist(){
     run_ffmpeg -hide_banner -loglevel error \\
       -f lavfi -i "color=c=0x0b0b11:s=\${RES}:r=\${FPS}" \\
       -f s16le -ar 44100 -ac 2 -i "\${AUDIO_PIPE}" \\
-      -map 0:v -map 1:a \\
-      -vf "\${FILTERS}" \\
+      "\${QR_ARGS[@]}" \\
+      "\${FILTER_ARGS[@]}" \\
       -c:v libx264 -preset "\${PRESET}" -b:v "\${VBR}" -maxrate "\${VBR}" -bufsize 9000k \\
       -pix_fmt yuv420p -r "\${FPS}" -g \$((FPS * 2)) \\
       -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
@@ -340,9 +398,11 @@ echo "Starting the self-contained FFmpeg host. OBS/browser source is not used."
 while :; do
   fetch_config || true
   RTMP="\$(normalize_rtmp "\$(value stream.rtmp_url)")"; KEY="\$(value stream.stream_key)"; BG="\$(value background_video_url)"
-  OVERLAY_TEXT="\$(value overlay.text)"; CREDIT_TEXT="\$(value lofi.credit_text)"
+  OVERLAY_TEXT="\$(value overlay.text)"; SUBTITLE_TEXT="\$(value overlay.subtitle)"; SPONSOR_ENABLED="\$(value overlay.sponsor_enabled)"; SPONSOR_TITLE="\$(value overlay.sponsor_title)"; SPONSOR_URL="\$(value overlay.sponsor_url)"; CREDIT_TEXT="\$(value lofi.credit_text)"
   TRACK_VERSION=\$(track_signature)
   write_overlay_files
+  SPONSOR_VERSION=\$(sponsor_signature)
+  prepare_sponsor
   RESTART_REQUESTED=0
 
   download_tracks
@@ -358,12 +418,19 @@ while :; do
     SAFE_TEXT=\$(escape_dt "\${OVERLAY_TEXT}")
     SAFE_CREDIT=\$(escape_dt "\${CREDIT_TEXT}")
     FILTERS=\$(build_filters)
+    QR_ARGS=(); FILTER_ARGS=()
+    if [ "\${SPONSOR_ENABLED}" = "true" ] && [ -f "\${QR_FILE}" ]; then
+      QR_ARGS=(-loop 1 -i "\${QR_FILE}")
+      FILTER_ARGS=(-filter_complex "[0:v]\${FILTERS}[base];[2:v]format=rgba[qr];[base][qr]overlay=W-255:35[v]" -map "[v]" -map 1:a)
+    else
+      FILTER_ARGS=(-map 0:v -map 1:a -vf "\${FILTERS}")
+    fi
     if [ -n "\${BG}" ]; then
       run_ffmpeg -hide_banner -loglevel error \\
         -stream_loop -1 -re -i "\${BG}" \\
         -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \\
-        -map 0:v -map 1:a \\
-        -vf "\${FILTERS}" \\
+        "\${QR_ARGS[@]}" \\
+        "\${FILTER_ARGS[@]}" \\
         -c:v libx264 -preset "\${PRESET}" -b:v "\${VBR}" -maxrate "\${VBR}" -bufsize 9000k \\
         -pix_fmt yuv420p -r "\${FPS}" -g \$((FPS * 2)) \\
         -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
@@ -372,8 +439,8 @@ while :; do
       run_ffmpeg -hide_banner -loglevel error \\
         -f lavfi -i "color=c=0x0b0b11:s=\${RES}:r=\${FPS}" \\
         -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \\
-        -map 0:v -map 1:a \\
-        -vf "\${FILTERS}" \\
+        "\${QR_ARGS[@]}" \\
+        "\${FILTER_ARGS[@]}" \\
         -c:v libx264 -preset "\${PRESET}" -b:v "\${VBR}" -maxrate "\${VBR}" -bufsize 9000k \\
         -pix_fmt yuv420p -r "\${FPS}" -g \$((FPS * 2)) \\
         -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
