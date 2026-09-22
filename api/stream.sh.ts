@@ -193,7 +193,6 @@ build_filters(){
 }
 
 start_audio_feeder(){
-  echo "Starting audio feeder for \${TRACK_COUNT} downloaded track(s)..."
   python3 - "\${PLAYLIST}" "\${META_DIR}" "\${TRACK_LABEL_FILE}" "\${AUDIO_PIPE}" "\${CONFIG}" "\${HAS_FFPROBE}" <<'FEED' &
 import hashlib, json, os, subprocess, sys, time
 playlist, meta_dir, label_file, audio_pipe, config_file, has_ffprobe = sys.argv[1:]
@@ -282,28 +281,11 @@ stop_audio_feeder(){
 FFMPEG_PID=""
 RESTART_REQUESTED=0
 run_ffmpeg(){
-  echo "Launching FFmpeg publisher..."
-  FFMPEG_LOG="$WORK/ffmpeg.log"
-  : > "$FFMPEG_LOG"
-  ffmpeg "$@" > "$FFMPEG_LOG" 2>&1 &
+  ffmpeg "$@" &
   FFMPEG_PID=$!
-  echo "FFmpeg started (pid $FFMPEG_PID); waiting for Twitch connection..."
   if [ "$FEED_AUDIO" -eq 1 ]; then start_audio_feeder; fi
-  local heartbeat=0
   while kill -0 "$FFMPEG_PID" 2>/dev/null; do
     sleep 5
-    heartbeat=$((heartbeat + 5))
-    if [ -s "$FFMPEG_LOG" ]; then
-      echo "FFmpeg status (last message):"
-      tail -n 3 "$FFMPEG_LOG" | sed "s|$KEY|[stream-key-redacted]|g"
-    else
-      echo "FFmpeg is still running (\${heartbeat}s elapsed; no FFmpeg output yet)."
-    fi
-    if [ "$heartbeat" -eq 30 ]; then
-      echo "FFmpeg startup diagnostic after 30 seconds (stream key redacted):"
-      sed "s|$KEY|[stream-key-redacted]|g" "$FFMPEG_LOG" || true
-      echo "End FFmpeg startup diagnostic."
-    fi
     if ! fetch_config; then continue; fi
     # Overlay files are hot-reloaded by FFmpeg; no process restart is needed.
     OVERLAY_TEXT="$(value overlay.text)"
@@ -311,22 +293,11 @@ run_ffmpeg(){
     write_overlay_files
     NEW_TRACK_VERSION="$(track_signature)"
     if [ -n "$NEW_TRACK_VERSION" ] && [ "$NEW_TRACK_VERSION" != "$TRACK_VERSION" ]; then
-      echo "Track playlist changed; applying the new queue after the current track..."
       download_tracks
       TRACK_VERSION="$NEW_TRACK_VERSION"
     fi
   done
-  local ffmpeg_status=0
-  wait "$FFMPEG_PID" 2>/dev/null || ffmpeg_status=$?
-  if [ -s "$FFMPEG_LOG" ]; then
-    echo "Final FFmpeg diagnostics:"
-    tail -n 20 "$FFMPEG_LOG" | sed "s|$KEY|[stream-key-redacted]|g"
-  fi
-  if [ "$ffmpeg_status" -eq 0 ]; then
-    echo "FFmpeg exited normally without an error status."
-  else
-    echo "FFmpeg exited with status $ffmpeg_status. Review the FFmpeg output above for the connection failure."
-  fi
+  wait "$FFMPEG_PID" 2>/dev/null || true
   FFMPEG_PID=""
   stop_audio_feeder
   FEED_AUDIO=0
@@ -342,7 +313,7 @@ play_playlist(){
   echo "[\$(date +%H:%M:%S)] Playing \${TRACK_COUNT} tracks in one continuous stream"
 
   if [ -n "\${BG}" ]; then
-    run_ffmpeg -hide_banner -loglevel info \\
+    run_ffmpeg -hide_banner -loglevel error \\
       -stream_loop -1 -re -i "\${BG}" \\
       -f s16le -ar 44100 -ac 2 -i "\${AUDIO_PIPE}" \\
       -map 0:v -map 1:a \\
@@ -352,7 +323,7 @@ play_playlist(){
       -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
       -f flv -rtmp_live live -rw_timeout 15000000 -flvflags no_duration_filesize "\${RTMP%/}/\${KEY}" || true
   else
-    run_ffmpeg -hide_banner -loglevel info \\
+    run_ffmpeg -hide_banner -loglevel error \\
       -f lavfi -i "color=c=0x0b0b11:s=\${RES}:r=\${FPS}" \\
       -f s16le -ar 44100 -ac 2 -i "\${AUDIO_PIPE}" \\
       -map 0:v -map 1:a \\
@@ -388,7 +359,7 @@ while :; do
     SAFE_CREDIT=\$(escape_dt "\${CREDIT_TEXT}")
     FILTERS=\$(build_filters)
     if [ -n "\${BG}" ]; then
-      run_ffmpeg -hide_banner -loglevel warning \\
+      run_ffmpeg -hide_banner -loglevel error \\
         -stream_loop -1 -re -i "\${BG}" \\
         -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \\
         -map 0:v -map 1:a \\
@@ -398,7 +369,7 @@ while :; do
         -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
         -f flv -rtmp_live live -rw_timeout 15000000 -flvflags no_duration_filesize "\${RTMP%/}/\${KEY}" || true
     else
-      run_ffmpeg -hide_banner -loglevel warning \\
+      run_ffmpeg -hide_banner -loglevel error \\
         -f lavfi -i "color=c=0x0b0b11:s=\${RES}:r=\${FPS}" \\
         -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 \\
         -map 0:v -map 1:a \\
