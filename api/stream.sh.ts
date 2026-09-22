@@ -89,6 +89,13 @@ PY
 }
 
 # ── Read settings ─────────────────────────────────────────────────
+normalize_bool(){
+  case "$1" in
+    true|True|TRUE|1) printf '%s' true ;;
+    *) printf '%s' false ;;
+  esac
+}
+
 normalize_rtmp(){
   local value="$1"
   case "$value" in
@@ -108,7 +115,7 @@ ABR="$(value stream.audio_bitrate)"; ABR="\${ABR:-160k}"
 PRESET="$(value stream.preset)"; PRESET="\${PRESET:-veryfast}"
 OVERLAY_TEXT="$(value overlay.text)"
 SUBTITLE_TEXT="$(value overlay.subtitle)"
-SPONSOR_ENABLED="$(value overlay.sponsor_enabled)"
+SPONSOR_ENABLED="$(normalize_bool "$(value overlay.sponsor_enabled)")"
 SPONSOR_TITLE="$(value overlay.sponsor_title)"
 SPONSOR_URL="$(value overlay.sponsor_url)"
 CREDIT_TEXT="$(value lofi.credit_text)"
@@ -332,7 +339,7 @@ run_ffmpeg(){
     # Overlay files are hot-reloaded by FFmpeg; no process restart is needed.
     OVERLAY_TEXT="$(value overlay.text)"
     SUBTITLE_TEXT="$(value overlay.subtitle)"
-    SPONSOR_ENABLED="$(value overlay.sponsor_enabled)"
+    SPONSOR_ENABLED="$(normalize_bool "$(value overlay.sponsor_enabled)")"
     SPONSOR_TITLE="$(value overlay.sponsor_title)"
     SPONSOR_URL="$(value overlay.sponsor_url)"
     CREDIT_TEXT="$(value lofi.credit_text)"
@@ -398,7 +405,7 @@ echo "Starting the self-contained FFmpeg host. OBS/browser source is not used."
 while :; do
   fetch_config || true
   RTMP="\$(normalize_rtmp "\$(value stream.rtmp_url)")"; KEY="\$(value stream.stream_key)"; BG="\$(value background_video_url)"
-  OVERLAY_TEXT="\$(value overlay.text)"; SUBTITLE_TEXT="\$(value overlay.subtitle)"; SPONSOR_ENABLED="\$(value overlay.sponsor_enabled)"; SPONSOR_TITLE="\$(value overlay.sponsor_title)"; SPONSOR_URL="\$(value overlay.sponsor_url)"; CREDIT_TEXT="\$(value lofi.credit_text)"
+  OVERLAY_TEXT="\$(value overlay.text)"; SUBTITLE_TEXT="\$(value overlay.subtitle)"; SPONSOR_ENABLED="\$(normalize_bool "\$(value overlay.sponsor_enabled)")"; SPONSOR_TITLE="\$(value overlay.sponsor_title)"; SPONSOR_URL="\$(value overlay.sponsor_url)"; CREDIT_TEXT="\$(value lofi.credit_text)"
   TRACK_VERSION=\$(track_signature)
   write_overlay_files
   SPONSOR_VERSION=\$(sponsor_signature)
