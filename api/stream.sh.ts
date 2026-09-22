@@ -6,8 +6,68 @@ set -euo pipefail
 API="${origin}/api/lofi"
 WORK="$(mktemp -d -t lofi.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT INT TERM
-need(){ command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1"; exit 1; }; }
-need curl; need ffmpeg; need ffprobe; need python3
+need(){ command -v "$1" >/dev/null 2>&1; }
+
+# ── Interactive dependency bootstrap ──────────────────────────────
+install_missing(){
+  local missing=()
+  need curl || missing+=(curl)
+  need ffmpeg || missing+=(ffmpeg)
+  need python3 || missing+=(python3)
+  need mkfifo || missing+=(coreutils)
+  # ffprobe is optional; audio is decoded directly into the persistent pipe.
+  if [ "\${#missing[@]}" -eq 0 ]; then return 0; fi
+
+  local os installer packages answer prefix=""
+  os="$(uname -s 2>/dev/null || echo unknown)"
+  packages="\${missing[*]}"
+  if [ "$os" = "Darwin" ] && command -v brew >/dev/null 2>&1; then
+    installer="brew install ffmpeg python3"
+  elif command -v apt-get >/dev/null 2>&1; then
+    installer="apt-get update && apt-get install -y curl ffmpeg python3 coreutils"
+    [ "$(id -u)" -eq 0 ] || installer="sudo $installer"
+  elif command -v dnf >/dev/null 2>&1; then
+    installer="dnf install -y curl ffmpeg python3 coreutils"
+    [ "$(id -u)" -eq 0 ] || installer="sudo $installer"
+  elif command -v yum >/dev/null 2>&1; then
+    installer="yum install -y curl ffmpeg python3 coreutils"
+    [ "$(id -u)" -eq 0 ] || installer="sudo $installer"
+  elif command -v pacman >/dev/null 2>&1; then
+    installer="pacman -Sy --noconfirm curl ffmpeg python"
+    [ "$(id -u)" -eq 0 ] || installer="sudo $installer"
+  elif command -v apk >/dev/null 2>&1; then
+    installer="apk add --no-cache curl ffmpeg python3 coreutils"
+    [ "$(id -u)" -eq 0 ] || installer="sudo $installer"
+  elif command -v brew >/dev/null 2>&1; then
+    installer="brew install ffmpeg python3"
+  else
+    echo "Missing dependencies: \${packages}"
+    echo "Detected OS: \${os}; no supported package manager was found."
+    echo "Install curl, ffmpeg, python3, ffprobe, and mkfifo, then run the stream again."
+    return 1
+  fi
+
+  echo "Missing stream dependencies: \${packages}"
+  echo "Detected OS: \${os}"
+  echo "Install command: \${installer}"
+  if [ ! -t 0 ] && [ ! -t 1 ]; then
+    echo "Interactive confirmation is unavailable; run the command above manually."
+    return 1
+  fi
+  read -r -p "Install these dependencies now? [y/N] " answer < /dev/tty || answer=""
+  case "$answer" in
+    y|Y|yes|YES) eval "$installer" || { echo "Dependency installation failed."; return 1; } ;;
+    *) echo "Dependency installation cancelled."; return 1 ;;
+  esac
+
+  need curl && need ffmpeg && need python3 && need mkfifo || {
+    echo "Installation completed, but one or more dependencies are still unavailable on PATH."
+    return 1
+  }
+}
+
+install_missing
+HAS_FFPROBE=0
 
 # ── Authentication ────────────────────────────────────────────────
 read -rsp "Lofi admin phrase: " PHRASE; echo
@@ -29,7 +89,18 @@ PY
 }
 
 # ── Read settings ─────────────────────────────────────────────────
-RTMP="$(value stream.rtmp_url)"; KEY="$(value stream.stream_key)"; BG="$(value background_video_url)"
+normalize_rtmp(){
+  local value="$1"
+  case "$value" in
+    rtmp://live.twitch.tv/app|rtmp://live.twitch.tv/app/|rtmp://live.twitch.tv:1935/app|rtmp://live.twitch.tv:1935/app/)
+      printf '%s' 'rtmps://live.twitch.tv:443/app' ;;
+    rtmps://live.twitch.tv/app|rtmps://live.twitch.tv/app/)
+      printf '%s' 'rtmps://live.twitch.tv:443/app' ;;
+    *) printf '%s' "\${value%/}" ;;
+  esac
+}
+
+RTMP="$(normalize_rtmp "$(value stream.rtmp_url)")"; KEY="$(value stream.stream_key)"; BG="$(value background_video_url)"
 RES="$(value stream.resolution)"; RES="\${RES:-1920x1080}"
 FPS="$(value stream.fps)"; FPS="\${FPS:-30}"
 VBR="$(value stream.video_bitrate)"; VBR="\${VBR:-4500k}"
@@ -44,6 +115,7 @@ CREDIT_FILE="$WORK/credit.txt"
 TRACK_LABEL_FILE="$WORK/track-label.txt"
 TRACK_VERSION=""
 LABEL_PID=""
+FEED_AUDIO=0
 : > "$TRACK_LABEL_FILE"
 
 [ -n "$RTMP" ] && [ -n "$KEY" ] || { echo "Configure the Twitch RTMP URL and stream key in the admin page first."; exit 1; }
@@ -55,6 +127,7 @@ escape_dt(){ python3 -c "import sys; t=sys.argv[1]; print(t.replace(chr(92),chr(
 # ── Download track library ────────────────────────────────────────
 TRACKS_DIR="$WORK/tracks"; mkdir -p "$TRACKS_DIR"
 PLAYLIST="$WORK/playlist.txt"; META_DIR="$WORK/meta"; mkdir -p "$META_DIR"
+AUDIO_PIPE="$WORK/audio.concat"; mkfifo "$AUDIO_PIPE"
 
 download_tracks(){
   > "$PLAYLIST"
@@ -119,11 +192,11 @@ build_filters(){
   printf '%s' "drawbox=x=0:y=ih-120:w=iw:h=120:color=black@0.55:t=fill,drawtext=textfile=\${OVERLAY_FILE}:reload=1:fontcolor=white:fontsize=36:x=40:y=h-100:font=Sans:borderw=2:bordercolor=black@0.6,drawtext=textfile=\${CREDIT_FILE}:reload=1:fontcolor=white@0.7:fontsize=22:x=40:y=h-55:font=Sans:borderw=1:bordercolor=black@0.4,drawtext=textfile=\${TRACK_LABEL_FILE}:reload=1:fontcolor=white:fontsize=28:x=w-tw-40:y=h-95:font=Sans:borderw=2:bordercolor=black@0.5"
 }
 
-start_track_label_updater(){
-  : > "\${TRACK_LABEL_FILE}"
-  python3 - "\${PLAYLIST}" "\${META_DIR}" "\${TRACK_LABEL_FILE}" <<'LABELS' &
-import json, os, subprocess, sys, time
-playlist, meta_dir, label_file = sys.argv[1:]
+start_audio_feeder(){
+  echo "Starting audio feeder for \${TRACK_COUNT} downloaded track(s)..."
+  python3 - "\${PLAYLIST}" "\${META_DIR}" "\${TRACK_LABEL_FILE}" "\${AUDIO_PIPE}" "\${CONFIG}" "\${HAS_FFPROBE}" <<'FEED' &
+import hashlib, json, os, subprocess, sys, time
+playlist, meta_dir, label_file, audio_pipe, config_file, has_ffprobe = sys.argv[1:]
 
 def paths():
     result = []
@@ -137,43 +210,67 @@ def paths():
         pass
     return result
 
+def signature():
+    try:
+        with open(config_file) as f: cfg = json.load(f)
+        tracks = cfg.get('track', {}).get('library', [])
+        identity = [{k: t.get(k, '') for k in ('id', 'storage_path', 'sort_order', 'active')} for t in tracks]
+        return hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    except (OSError, ValueError):
+        return ''
+
+def reload_tracks():
+    # The parent shell refreshes CONFIG and playlist; this just rereads them.
+    return paths()
+
 def write_label(value):
     temp = label_file + '.tmp'
-    with open(temp, 'w') as f:
-        f.write(value)
+    with open(temp, 'w') as f: f.write(value)
     os.replace(temp, label_file)
 
-while True:
-    current = paths()
-    if not current:
-        time.sleep(1)
-        continue
-    for path in current:
+current_signature = signature()
+index = 0
+with open(audio_pipe, 'wb') as pipe:
+    while True:
+        current = reload_tracks()
+        if not current:
+            time.sleep(1)
+            continue
+        if index >= len(current):
+            index = 0
+        path = current[index]
         if not os.path.isfile(path):
+            index += 1
             continue
         stem = os.path.splitext(os.path.basename(path))[0]
         try:
-            with open(os.path.join(meta_dir, stem + '.json')) as f:
-                meta = json.load(f)
+            with open(os.path.join(meta_dir, stem + '.json')) as f: meta = json.load(f)
         except (OSError, ValueError):
             meta = {}
         title = str(meta.get('title', '')).strip()
         artist = str(meta.get('artist', '')).strip()
-        label = title + (' — ' + artist if artist else '')
-        write_label(label)
+        write_label(title + (' — ' + artist if artist else ''))
+        # Decode one track into the persistent raw PCM pipe. FFmpeg's main
+        # publisher keeps reading this stream, so the Twitch connection never
+        # closes between tracks.
         try:
-            duration = float(subprocess.check_output([
-                'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-                '-of', 'default=noprint_wrappers=1:nokey=1', path
-            ], text=True, stderr=subprocess.DEVNULL).strip())
-        except (OSError, ValueError, subprocess.CalledProcessError):
-            duration = 180.0
-        time.sleep(max(1.0, duration))
-LABELS
+            subprocess.run([
+                'ffmpeg', '-hide_banner', '-loglevel', 'error', '-i', path,
+                '-f', 's16le', '-ar', '44100', '-ac', '2', '-'
+            ], stdout=pipe, stderr=subprocess.DEVNULL, check=False)
+        except OSError:
+            time.sleep(1)
+        new_signature = signature()
+        if new_signature and new_signature != current_signature:
+            current_signature = new_signature
+            index = 0
+        else:
+            index += 1
+FEED
   LABEL_PID=$!
 }
 
-stop_track_label_updater(){
+stop_audio_feeder(){
   if [ -n "\${LABEL_PID}" ]; then
     kill "\${LABEL_PID}" 2>/dev/null || true
     wait "\${LABEL_PID}" 2>/dev/null || true
@@ -181,14 +278,32 @@ stop_track_label_updater(){
   fi
 }
 
-# ── Restart FFmpeg only when the track playlist changes ───────────
+# ── Keep FFmpeg connected; the feeder changes tracks independently ──
 FFMPEG_PID=""
 RESTART_REQUESTED=0
 run_ffmpeg(){
-  ffmpeg "$@" &
+  echo "Launching FFmpeg publisher..."
+  FFMPEG_LOG="$WORK/ffmpeg.log"
+  : > "$FFMPEG_LOG"
+  ffmpeg "$@" > "$FFMPEG_LOG" 2>&1 &
   FFMPEG_PID=$!
+  echo "FFmpeg started (pid $FFMPEG_PID); waiting for Twitch connection..."
+  if [ "$FEED_AUDIO" -eq 1 ]; then start_audio_feeder; fi
+  local heartbeat=0
   while kill -0 "$FFMPEG_PID" 2>/dev/null; do
     sleep 5
+    heartbeat=$((heartbeat + 5))
+    if [ -s "$FFMPEG_LOG" ]; then
+      echo "FFmpeg status (last message):"
+      tail -n 3 "$FFMPEG_LOG" | sed "s|$KEY|[stream-key-redacted]|g"
+    else
+      echo "FFmpeg is still running (\${heartbeat}s elapsed; no FFmpeg output yet)."
+    fi
+    if [ "$heartbeat" -eq 30 ]; then
+      echo "FFmpeg startup diagnostic after 30 seconds (stream key redacted):"
+      sed "s|$KEY|[stream-key-redacted]|g" "$FFMPEG_LOG" || true
+      echo "End FFmpeg startup diagnostic."
+    fi
     if ! fetch_config; then continue; fi
     # Overlay files are hot-reloaded by FFmpeg; no process restart is needed.
     OVERLAY_TEXT="$(value overlay.text)"
@@ -196,46 +311,56 @@ run_ffmpeg(){
     write_overlay_files
     NEW_TRACK_VERSION="$(track_signature)"
     if [ -n "$NEW_TRACK_VERSION" ] && [ "$NEW_TRACK_VERSION" != "$TRACK_VERSION" ]; then
-      echo "Track playlist changed; rebuilding the audio playlist..."
-      RESTART_REQUESTED=1
-      kill "$FFMPEG_PID" 2>/dev/null || true
-      break
+      echo "Track playlist changed; applying the new queue after the current track..."
+      download_tracks
+      TRACK_VERSION="$NEW_TRACK_VERSION"
     fi
   done
-  wait "$FFMPEG_PID" 2>/dev/null || true
+  local ffmpeg_status=0
+  wait "$FFMPEG_PID" 2>/dev/null || ffmpeg_status=$?
+  if [ -s "$FFMPEG_LOG" ]; then
+    echo "Final FFmpeg diagnostics:"
+    tail -n 20 "$FFMPEG_LOG" | sed "s|$KEY|[stream-key-redacted]|g"
+  fi
+  if [ "$ffmpeg_status" -eq 0 ]; then
+    echo "FFmpeg exited normally without an error status."
+  else
+    echo "FFmpeg exited with status $ffmpeg_status. Review the FFmpeg output above for the connection failure."
+  fi
   FFMPEG_PID=""
-  stop_track_label_updater
+  stop_audio_feeder
+  FEED_AUDIO=0
 }
 
 # ── Play the complete playlist in one continuous stream ───────────
 play_playlist(){
   write_overlay_files
-  start_track_label_updater
+  FEED_AUDIO=1
   local FILTERS
   FILTERS=\$(build_filters)
 
   echo "[\$(date +%H:%M:%S)] Playing \${TRACK_COUNT} tracks in one continuous stream"
 
   if [ -n "\${BG}" ]; then
-    run_ffmpeg -hide_banner -loglevel error \\
+    run_ffmpeg -hide_banner -loglevel info \\
       -stream_loop -1 -re -i "\${BG}" \\
-      -stream_loop -1 -f concat -safe 0 -i "\${PLAYLIST}" \\
+      -f s16le -ar 44100 -ac 2 -i "\${AUDIO_PIPE}" \\
       -map 0:v -map 1:a \\
       -vf "\${FILTERS}" \\
       -c:v libx264 -preset "\${PRESET}" -b:v "\${VBR}" -maxrate "\${VBR}" -bufsize 9000k \\
       -pix_fmt yuv420p -r "\${FPS}" -g \$((FPS * 2)) \\
       -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
-      -f flv "\${RTMP%/}/\${KEY}" || true
+      -f flv -rtmp_live live -rw_timeout 15000000 -flvflags no_duration_filesize "\${RTMP%/}/\${KEY}" || true
   else
-    run_ffmpeg -hide_banner -loglevel error \\
+    run_ffmpeg -hide_banner -loglevel info \\
       -f lavfi -i "color=c=0x0b0b11:s=\${RES}:r=\${FPS}" \\
-      -stream_loop -1 -f concat -safe 0 -i "\${PLAYLIST}" \\
+      -f s16le -ar 44100 -ac 2 -i "\${AUDIO_PIPE}" \\
       -map 0:v -map 1:a \\
       -vf "\${FILTERS}" \\
       -c:v libx264 -preset "\${PRESET}" -b:v "\${VBR}" -maxrate "\${VBR}" -bufsize 9000k \\
       -pix_fmt yuv420p -r "\${FPS}" -g \$((FPS * 2)) \\
       -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
-      -f flv "\${RTMP%/}/\${KEY}" || true
+      -f flv -rtmp_live live -rw_timeout 15000000 -flvflags no_duration_filesize "\${RTMP%/}/\${KEY}" || true
   fi
 }
 
@@ -243,7 +368,7 @@ echo "Starting the self-contained FFmpeg host. OBS/browser source is not used."
 
 while :; do
   fetch_config || true
-  RTMP="\$(value stream.rtmp_url)"; KEY="\$(value stream.stream_key)"; BG="\$(value background_video_url)"
+  RTMP="\$(normalize_rtmp "\$(value stream.rtmp_url)")"; KEY="\$(value stream.stream_key)"; BG="\$(value background_video_url)"
   OVERLAY_TEXT="\$(value overlay.text)"; CREDIT_TEXT="\$(value lofi.credit_text)"
   TRACK_VERSION=\$(track_signature)
   write_overlay_files
@@ -258,6 +383,7 @@ while :; do
     play_playlist
   else
     # No tracks — play with silence and overlay
+    FEED_AUDIO=0
     SAFE_TEXT=\$(escape_dt "\${OVERLAY_TEXT}")
     SAFE_CREDIT=\$(escape_dt "\${CREDIT_TEXT}")
     FILTERS=\$(build_filters)
@@ -270,7 +396,7 @@ while :; do
         -c:v libx264 -preset "\${PRESET}" -b:v "\${VBR}" -maxrate "\${VBR}" -bufsize 9000k \\
         -pix_fmt yuv420p -r "\${FPS}" -g \$((FPS * 2)) \\
         -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
-        -f flv "\${RTMP%/}/\${KEY}" || true
+        -f flv -rtmp_live live -rw_timeout 15000000 -flvflags no_duration_filesize "\${RTMP%/}/\${KEY}" || true
     else
       run_ffmpeg -hide_banner -loglevel warning \\
         -f lavfi -i "color=c=0x0b0b11:s=\${RES}:r=\${FPS}" \\
@@ -280,7 +406,7 @@ while :; do
         -c:v libx264 -preset "\${PRESET}" -b:v "\${VBR}" -maxrate "\${VBR}" -bufsize 9000k \\
         -pix_fmt yuv420p -r "\${FPS}" -g \$((FPS * 2)) \\
         -c:a aac -b:a "\${ABR}" -ar 44100 -ac 2 \\
-        -f flv "\${RTMP%/}/\${KEY}" || true
+        -f flv -rtmp_live live -rw_timeout 15000000 -flvflags no_duration_filesize "\${RTMP%/}/\${KEY}" || true
     fi
   fi
 

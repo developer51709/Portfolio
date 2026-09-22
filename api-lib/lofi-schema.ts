@@ -9,7 +9,7 @@ const SCHEMA_STATEMENTS = [
     oxapay_merchant_key text not null default '',
     overlay_text text not null default 'Lofi radio 24/7',
     overlay_settings jsonb not null default '{"show_qr": true, "show_ads": true, "refresh_seconds": 10, "theme": "dark"}'::jsonb,
-    stream_settings jsonb not null default '{"rtmp_url": "rtmp://live.twitch.tv/app", "stream_key": "", "resolution": "1920x1080", "fps": 30, "video_bitrate": "4500k", "audio_bitrate": "160k", "preset": "veryfast"}'::jsonb,
+    stream_settings jsonb not null default '{"rtmp_url": "rtmps://live.twitch.tv:443/app", "stream_key": "", "resolution": "1920x1080", "fps": 30, "video_bitrate": "4500k", "audio_bitrate": "160k", "preset": "veryfast"}'::jsonb,
     track_metadata jsonb not null default '{"title": "Untitled", "artist": "", "album": "", "playlist_url": ""}'::jsonb,
     crypto_wallets jsonb not null default '[]'::jsonb,
     donation_settings jsonb not null default '{"description": "Support the stream", "min_amount": 1, "currency": "USDT", "reward_text": "Your name on the overlay!"}'::jsonb,
