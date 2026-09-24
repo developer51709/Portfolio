@@ -114,7 +114,6 @@ function cardSvg(username: string, contributions: { date: string; level: number 
     ${LEVELS.map((c, i) => `<rect x="${22 + i * 12}" y="0" width="8" height="8" rx="2" fill="${c}"/>`).join('')}
     <text x="${22 + 5 * 12 + 6}" y="8" font-family="${FF}" font-size="7" fill="${MUTED}">More</text>
   </g>
-  <text x="20" y="${H - 8}" font-family="${FF}" font-size="9" fill="${MUTED}">Self-hosted · sorenthedev.indevs.in/api/cards/activity-graph</text>
 </svg>`;
 }
 
