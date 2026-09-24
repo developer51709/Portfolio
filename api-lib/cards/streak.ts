@@ -66,7 +66,6 @@ function cardSvg(username: string, data: { currentStreak: number; longestStreak:
   <line x1="16" y1="52" x2="${W - 16}" y2="52" stroke="${BORDER}" stroke-width="1"/>
   ${cards}
   ${totalLine}
-  <text x="${W - 16}" y="${H - 10}" font-family="${FF}" font-size="9" fill="${MUTED}" text-anchor="end">Self-hosted · sorenthedev.indevs.in/api/cards/streak</text>
 </svg>`;
 }
 
