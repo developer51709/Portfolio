@@ -43,7 +43,7 @@ function aboutSvg(usernameClean: string) {
     const words = BIO.split(/\s+/);
     const lines: string[] = [];
     let cur = '';
-    const approx = 126;
+    const approx = 136;
     for (const w of words) {
       const cand = cur ? `${cur} ${w}` : w;
       if (cand.length > approx && cur) { lines.push(cur); cur = w; }
