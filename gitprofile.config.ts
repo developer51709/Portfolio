@@ -89,7 +89,7 @@ const CONFIG = {
     telegram: '',
     website: '',
     phone: '+1 (762) 435-4135',
-    email: 'developer51709@proton.me',
+    email: 'sorenthedev@gmail.com',
     tiktok: 'sorenthedev', // example: 'myusername'
     twitch: 'sorenthedev', // example: 'myusername'
     snapchat: '', // example: 'myusername'

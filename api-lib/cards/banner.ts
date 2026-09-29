@@ -324,7 +324,7 @@ function bannerSvg(
   // Divider + footer
   const footer = `<line x1="48" y1="500" x2="${String(W - 40)}" y2="500" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
   <text x="48" y="532" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif" font-size="12" fill="#6b7280">sorenthedev.indevs.in</text>
-  <text x="${String(W - 48)}" y="532" text-anchor="end" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif" font-size="12" fill="#6b7280">contact · developer51709@proton.me</text>`;
+  <text x="${String(W - 48)}" y="532" text-anchor="end" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif" font-size="12" fill="#6b7280">contact · sorenthedev@gmail.com</text>`;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs>

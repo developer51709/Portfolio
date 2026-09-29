@@ -25,7 +25,7 @@ const LUCIDE = {
 
 const CONTACT = {
   discord: 'sorenthedev',
-  email: 'developer51709@proton.me',
+  email: 'sorenthedev@gmail.com',
   phone: '+1 (762) 435-4135',
 };
 
