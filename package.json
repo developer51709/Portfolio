@@ -28,7 +28,7 @@
     "pg": "^8.23.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "three": "^0.185.1"
+    "three": "^0.186.1"
   },
   "devDependencies": {
     "@arifszn/blog-js": "^2.0.6",
