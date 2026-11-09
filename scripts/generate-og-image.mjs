@@ -77,9 +77,11 @@ const esc = (value) =>
  */
 async function buildAvatarSource() {
   try {
+    // Bound the request: publish/build sandboxes may have no egress, and an
+    // unbounded fetch would hang the whole build instead of using the fallback.
     const res = await fetch(
       `https://github.com/${encodeURIComponent(username)}.png?size=512`,
-      { redirect: 'follow' },
+      { redirect: 'follow', signal: AbortSignal.timeout(8_000) },
     );
     if (!res.ok) throw new Error(`GitHub avatar fetch failed: ${res.status}`);
     const bytes = Buffer.from(await res.arrayBuffer());

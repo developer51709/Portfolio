@@ -17,7 +17,6 @@ import { Profile } from '../interfaces/profile';
 import DetailsCard from './details-card';
 import { GithubProject } from '../interfaces/github-project';
 import GithubProjectCard from './github-project-card';
-import BlogCard from './blog-card';
 import DiscordPresenceCard from './discord-presence-card';
 import SponsorPage from './sponsor-page';
 import ThreeBackground from './three-background';
@@ -35,12 +34,20 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
  * Multi-page GitProfile shell. Routes:
  *   ''           -> Home (profile, Discord presence, GitHub stats, tech stack)
  *   projects     -> GitHub projects grid
- *   articles     -> dev.to articles
  *   commissions  -> Commission pricing page
  *   sponsor      -> OxaPay donation page
  *   terms        -> Commission terms of service
  *   privacy      -> Commission privacy policy
  */
+const KNOWN_ROUTES: PageRoute[] = [
+  '',
+  'projects',
+  'commissions',
+  'sponsor',
+  'terms',
+  'privacy',
+];
+
 const GitProfile = ({ config }: { config: Config }) => {
   const [sanitizedConfig] = useState<SanitizedConfig | Record<string, never>>(
     getSanitizedConfig(config),
@@ -50,9 +57,12 @@ const GitProfile = ({ config }: { config: Config }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [githubProjects, setGithubProjects] = useState<GithubProject[]>([]);
   const [route, navigate] = useHashRoute();
-  const { data: statsData, loading: statsLoading } = useGithubStats(
-    sanitizedConfig.github.username,
-  );
+  const {
+    data: statsData,
+    loading: statsLoading,
+    error: statsError,
+    refetch: refetchStats,
+  } = useGithubStats(sanitizedConfig.github.username);
 
   const getGithubProjects = useCallback(
     async (publicRepoCount: number): Promise<GithubProject[]> => {
@@ -181,7 +191,10 @@ const GitProfile = ({ config }: { config: Config }) => {
     }
   };
 
-  const pageRoute = route as PageRoute;
+  // Unknown hashes (e.g. old #/articles links) fall back to the home page.
+  const pageRoute: PageRoute = KNOWN_ROUTES.includes(route as PageRoute)
+    ? (route as PageRoute)
+    : '';
 
   return (
     <div className="fade-in min-h-screen">
@@ -203,19 +216,14 @@ const GitProfile = ({ config }: { config: Config }) => {
           {pageRoute === 'sponsor' ? (
             <SponsorPage onBack={() => navigate('')} />
           ) : (
-            <PageLayout
-              route={pageRoute}
-              onNavigate={(r) => navigate(r)}
-            >
+            <PageLayout route={pageRoute} onNavigate={(r) => navigate(r)}>
               {pageRoute === '' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <div className="col-span-1 grid grid-cols-1 gap-6 content-start">
                     <AvatarCard
                       profile={profile}
                       loading={loading}
-                      avatarRing={
-                        sanitizedConfig.themeConfig.displayAvatarRing
-                      }
+                      avatarRing={sanitizedConfig.themeConfig.displayAvatarRing}
                       resumeFileUrl={sanitizedConfig.resume.fileUrl}
                     />
                     <DiscordPresenceCard
@@ -234,7 +242,9 @@ const GitProfile = ({ config }: { config: Config }) => {
                       stats={statsData?.stats ?? null}
                       techStack={statsData?.techStack ?? null}
                       loading={statsLoading}
+                      error={statsError}
                       username={sanitizedConfig.github.username}
+                      onRetry={refetchStats}
                     />
                     <TechStack
                       techStack={statsData?.techStack ?? null}
@@ -253,18 +263,6 @@ const GitProfile = ({ config }: { config: Config }) => {
                       githubProjects={githubProjects}
                       loading={loading}
                       googleAnalyticsId={sanitizedConfig.googleAnalytics.id}
-                    />
-                  )}
-                </div>
-              )}
-
-              {pageRoute === 'articles' && (
-                <div className="grid grid-cols-1 gap-6">
-                  {sanitizedConfig.blog.display && (
-                    <BlogCard
-                      loading={loading}
-                      googleAnalyticsId={sanitizedConfig.googleAnalytics.id}
-                      blog={sanitizedConfig.blog}
                     />
                   )}
                 </div>

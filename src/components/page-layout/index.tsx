@@ -1,6 +1,5 @@
 import { ReactNode } from 'react';
 import {
-  AiOutlineBook,
   AiOutlineGithub,
   AiOutlineHome,
   AiOutlineShoppingCart,
@@ -10,7 +9,6 @@ import { FaHeart } from 'react-icons/fa';
 export type PageRoute =
   | ''
   | 'projects'
-  | 'articles'
   | 'commissions'
   | 'sponsor'
   | 'terms'
@@ -23,11 +21,6 @@ export const NAV_ITEMS: { label: string; route: PageRoute; icon: ReactNode }[] =
       label: 'Projects',
       route: 'projects',
       icon: <AiOutlineGithub className="w-4 h-4" />,
-    },
-    {
-      label: 'Articles',
-      route: 'articles',
-      icon: <AiOutlineBook className="w-4 h-4" />,
     },
     {
       label: 'Commissions',
@@ -80,11 +73,7 @@ const PageLayout = ({ route, onNavigate, children }: PageLayoutProps) => (
   </>
 );
 
-export const SponsorButton = ({
-  onClick,
-}: {
-  onClick: () => void;
-}) => (
+export const SponsorButton = ({ onClick }: { onClick: () => void }) => (
   <button
     onClick={onClick}
     className="btn btn-primary glass-btn fixed bottom-6 right-6 z-50 shadow-lg gap-2 rounded-full px-5"

@@ -1,11 +1,11 @@
 <p align="center">
   <a href="https://sorenthedev.indevs.in">
-    <img src="https://sorenthedev.indevs.in/api/cards/profile" width="100%" alt="Soren's unified developer profile card" />
+    <img src="https://sorenthedev.indevs.in/api/cards/profile" width="100%" alt="Soren's GitHub stats card" />
   </a>
 </p>
 
 <p align="center">
-  <sub>Live GitHub profile, projects, activity, languages, contact details, and tech stack — rendered as one self-hosted card.</sub>
+  <sub>Live GitHub stats and language mix — one minimal, self-hosted card.</sub>
 </p>
 
 <p align="center">

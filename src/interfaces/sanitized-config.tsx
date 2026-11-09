@@ -117,13 +117,6 @@ export interface SanitizedHotjar {
   snippetVersion: number;
 }
 
-export interface SanitizedBlog {
-  display: boolean;
-  source: string;
-  username: string;
-  limit: number;
-}
-
 export interface SanitizedThemeConfig {
   defaultTheme: string;
   disableSwitch: boolean;
@@ -152,7 +145,6 @@ export interface SanitizedConfig {
   publications: Array<SanitizedPublication>;
   googleAnalytics: SanitizedGoogleAnalytics;
   hotjar: SanitizedHotjar;
-  blog: SanitizedBlog;
   themeConfig: SanitizedThemeConfig;
   footer?: string;
   enablePWA: boolean;

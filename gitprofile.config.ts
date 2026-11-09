@@ -55,7 +55,8 @@ const CONFIG = {
   },
   seo: {
     title: 'Soren — Building Modern Web & Bot Experiences',
-    description: 'Exploring clean design, smooth interactions, and creative development across web and bot projects.',
+    description:
+      'Exploring clean design, smooth interactions, and creative development across web and bot projects.',
     // Auto-generated OpenGraph image. `scripts/generate-og-image.mjs` builds
     // `public/og-image.svg` on every build with the current GitHub avatar
     // embedded, and wsrv.nl rasterizes it to PNG for crawlers (SVG alone is
@@ -100,8 +101,7 @@ const CONFIG = {
     soundcloud: '', // example: 'myusername'
   },
   resume: {
-    fileUrl:
-      '', // Empty fileUrl will hide the `Download Resume` button.
+    fileUrl: '', // Empty fileUrl will hide the `Download Resume` button.
   },
   skills: [
     'PHP',
@@ -173,12 +173,6 @@ const CONFIG = {
     },
     **/
   ],
-  // Display articles from your medium or dev account. (Optional)
-  blog: {
-    source: 'dev', // medium | dev
-    username: 'developer51709', // to hide blog section, keep it empty
-    limit: 2, // How many articles to display. Max is 10.
-  },
   googleAnalytics: {
     id: 'G-8SQNF5WJ9G', // GA3 tracking id/GA4 tag id UA-XXXXXXXXX-X | G-XXXXXXXXXX
   },

@@ -120,12 +120,6 @@ export const getSanitizedConfig = (
         id: config?.hotjar?.id,
         snippetVersion: config?.hotjar?.snippetVersion || 6,
       },
-      blog: {
-        username: config?.blog?.username || '',
-        source: config?.blog?.source || 'dev',
-        limit: config?.blog?.limit || 5,
-        display: !!config?.blog?.username && !!config?.blog?.source,
-      },
       themeConfig: {
         defaultTheme: config?.themeConfig?.defaultTheme || DEFAULT_THEMES[0],
         disableSwitch: config?.themeConfig?.disableSwitch || false,

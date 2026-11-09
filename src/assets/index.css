@@ -239,7 +239,7 @@
   filter: brightness(1.2);
 }
 
-/* Squircle image mask (used by article thumbnails) */
+/* Squircle image mask (used by project thumbnails) */
 .mask-squircle {
   border-radius: 30%;
 }

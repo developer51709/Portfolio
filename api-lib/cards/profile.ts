@@ -1,137 +1,253 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const USERNAME = 'developer51709';
-const W = 1200;
-const H = 980;
-const PANEL = 'rgba(255,255,255,0.045)';
-const BORDER = 'rgba(255,255,255,0.10)';
+const W = 1000;
+const H = 344;
 const TEXT = '#f4f4f7';
-const MUTED = '#9ca3af';
+const MUTED = '#8b8f9a';
 const BLUE = '#4f7cff';
-const VIOLET = '#a78bfa';
+const BORDER = 'rgba(255,255,255,0.08)';
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif";
 
-type Repo = { name: string; description: string; language: string; stars: number };
-type Profile = { name: string; followers: number; following: number; repos: number; avatar: string };
-type LiveData = { profile: Profile; repos: Repo[]; languages: string[] };
+const LANGUAGE_COLORS: Record<string, string> = {
+  TypeScript: '#3178c6',
+  JavaScript: '#f1e05a',
+  Python: '#3572A5',
+  HTML: '#e34c26',
+  CSS: '#1572b6',
+  MDX: '#fcb32c',
+  Go: '#00ADD8',
+  Rust: '#dea584',
+  Java: '#b07219',
+  Kotlin: '#A97BFF',
+  Shell: '#89e051',
+  Ruby: '#701516',
+  Swift: '#f05138',
+  Dart: '#00b4ab',
+};
+
+type Stats = {
+  name: string;
+  repos: number;
+  stars: number;
+  followers: number;
+  following: number;
+};
+
+type Language = { name: string; percent: number };
 
 function esc(value: string) {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
-async function github(path: string, token?: string) {
-  const response = await fetch(`https://api.github.com${path}`, {
-    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'sorenthedev-profile-card', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+function count(value: number) {
+  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function colorFor(language: string) {
+  return LANGUAGE_COLORS[language] ?? BLUE;
+}
+
+async function github(pathname: string, token?: string) {
+  const response = await fetch(`https://api.github.com${pathname}`, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'sorenthedev-profile-card',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   });
-  if (!response.ok) throw new Error(`GitHub request failed: ${response.status}`);
-  return response.json() as Promise<unknown>;
+  if (!response.ok)
+    throw new Error(`GitHub request failed: ${response.status}`);
+  return (await response.json()) as unknown;
 }
 
-async function getLiveData(): Promise<LiveData> {
+async function getLiveData(username: string) {
   const token = process.env.GITHUB_TOKEN;
-  const rawProfile = await github(`/users/${USERNAME}`, token) as Record<string, unknown>;
-  const rawRepos: Array<Record<string, unknown>> = [];
-  for (let page = 1; page <= 10; page += 1) {
-    const batch = await github(`/users/${USERNAME}/repos?per_page=100&page=${page}&sort=updated`, token) as Array<Record<string, unknown>>;
-    rawRepos.push(...batch);
+  const profile = (await github(`/users/${username}`, token)) as Record<
+    string,
+    unknown
+  >;
+
+  const repos: Array<Record<string, unknown>> = [];
+  for (let page = 1; page <= 3; page += 1) {
+    const batch = (await github(
+      `/users/${username}/repos?per_page=100&sort=updated&page=${page}`,
+      token,
+    )) as Array<Record<string, unknown>>;
+    repos.push(
+      ...batch.filter(
+        (repo) =>
+          !repo.fork &&
+          (repo.owner as Record<string, unknown> | undefined)?.login ===
+            username,
+      ),
+    );
     if (batch.length < 100) break;
   }
-  const ownedRepos = rawRepos.filter((repo) => !repo.fork);
-  const repos = ownedRepos.map((repo) => ({
-    name: String(repo.name ?? ''),
-    description: String(repo.description ?? 'Open-source project'),
-    language: String(repo.language ?? 'Code'),
-    stars: Number(repo.stargazers_count ?? 0),
-  })).slice(0, 4);
-  // Build the stack from every owned repository returned by GitHub, not only
-  // the four featured project cards shown below.
+
   const languageCounts = new Map<string, number>();
-  for (const repo of ownedRepos) {
+  for (const repo of repos) {
     const language = String(repo.language ?? '').trim();
-    if (language) languageCounts.set(language, (languageCounts.get(language) ?? 0) + 1);
+    if (language)
+      languageCounts.set(language, (languageCounts.get(language) ?? 0) + 1);
   }
-  const languages = [...languageCounts.entries()]
+  const top = [...languageCounts.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([language]) => language)
-    .slice(0, 8);
-  return {
-    profile: {
-      name: String(rawProfile.name ?? USERNAME),
-      followers: Number(rawProfile.followers ?? 0),
-      following: Number(rawProfile.following ?? 0),
-      repos: Number(rawProfile.public_repos ?? repos.length),
-      avatar: `https://github.com/${USERNAME}.png?size=256`,
-    },
-    repos,
-    languages,
+    .slice(0, 5);
+  const tagged = top.reduce((total, [, amount]) => total + amount, 0);
+  const languages: Language[] = top.map(([name, amount]) => ({
+    name,
+    percent: tagged ? Math.round((amount / tagged) * 1000) / 10 : 0,
+  }));
+
+  const stats: Stats = {
+    name: String(profile.name ?? username),
+    repos: Number(profile.public_repos ?? repos.length),
+    stars: repos.reduce(
+      (total, repo) => total + Number(repo.stargazers_count ?? 0),
+      0,
+    ),
+    followers: Number(profile.followers ?? 0),
+    following: Number(profile.following ?? 0),
   };
+
+  return { stats, languages };
 }
 
-function panel(x: number, y: number, width: number, height: number, content: string) {
-  return `<g transform="translate(${x},${y})"><rect width="${width}" height="${height}" rx="18" fill="${PANEL}" stroke="${BORDER}"/>${content}</g>`;
+async function avatarDataUri(username: string) {
+  try {
+    const response = await fetch(
+      `https://github.com/${encodeURIComponent(username)}.png?size=192`,
+      { redirect: 'follow' },
+    );
+    if (!response.ok) return null;
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length === 0 || buffer.length > 1_500_000) return null;
+    const type = response.headers.get('content-type') ?? 'image/png';
+    return `data:${type};base64,${buffer.toString('base64')}`;
+  } catch {
+    return null;
+  }
 }
 
-function heading(title: string, subtitle: string) {
-  return `<text x="24" y="32" font-family="${FONT}" font-size="11" font-weight="700" letter-spacing="2.2" fill="${MUTED}">${esc(title.toUpperCase())}</text><text x="24" y="56" font-family="${FONT}" font-size="13" fill="${TEXT}">${esc(subtitle)}</text>`;
-}
+function render(stats: Stats, languages: Language[], avatar: string | null) {
+  const values = [
+    { label: 'Repositories', value: stats.repos },
+    { label: 'Stars', value: stats.stars },
+    { label: 'Followers', value: stats.followers },
+    { label: 'Following', value: stats.following },
+  ];
 
-const LUCIDE = {
-  repos: '<path d="M4 20h16"/><path d="M6 16V4h12v12"/><path d="M8 8h8"/><path d="M8 12h6"/>',
-  followers: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
-  following: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/>',
-} as const;
+  const statRow = values
+    .map((item, index) => {
+      const x = 56 + index * 244;
+      return `<g><text x="${x}" y="238" font-family="${FONT}" font-size="26" font-weight="700" fill="${TEXT}">${count(
+        item.value,
+      )}</text><text x="${x}" y="258" font-family="${FONT}" font-size="10" font-weight="600" letter-spacing="1.6" fill="${MUTED}">${esc(
+        item.label.toUpperCase(),
+      )}</text></g>`;
+    })
+    .join('');
 
-type StatIcon = keyof typeof LUCIDE;
+  const totalPercent =
+    languages.reduce((total, language) => total + language.percent, 0) || 100;
+  let cursor = 56;
+  const segments = languages
+    .map((language, index) => {
+      const width = (language.percent / totalPercent) * 888;
+      const gap = index < languages.length - 1 ? 2 : 0;
+      const rect = `<rect x="${cursor.toFixed(1)}" y="292" width="${Math.max(
+        width - gap,
+        0,
+      ).toFixed(1)}" height="6" rx="3" fill="${colorFor(language.name)}"/>`;
+      cursor += width;
+      return rect;
+    })
+    .join('');
+  const track = languages.length
+    ? segments
+    : '<rect x="56" y="292" width="888" height="6" rx="3" fill="rgba(255,255,255,0.06)"/>';
 
-function stat(x: number, label: string, value: string, accent: string, icon: StatIcon) {
-  return `<g transform="translate(${x},66)"><circle cx="14" cy="18" r="14" fill="${accent}26"/><svg x="6" y="10" width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g fill="none" stroke="${accent}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${LUCIDE[icon]}</g></svg><text x="38" y="17" font-family="${FONT}" font-size="10" letter-spacing="1.2" fill="${MUTED}">${esc(label.toUpperCase())}</text><text x="38" y="40" font-family="${FONT}" font-size="19" font-weight="700" fill="${TEXT}">${esc(value)}</text></g>`;
-}
+  const legend = languages
+    .map((language, index) => {
+      const x = 56 + index * 177.6;
+      return `<g><circle cx="${(x + 4).toFixed(1)}" cy="315" r="3.5" fill="${colorFor(
+        language.name,
+      )}"/><text x="${(x + 14).toFixed(1)}" y="319" font-family="${FONT}" font-size="10.5" fill="${MUTED}">${esc(
+        language.name,
+      )} <tspan fill="${TEXT}">${language.percent}%</tspan></text></g>`;
+    })
+    .join('');
 
-function project(x: number, y: number, repo: Repo, color: string) {
-  const description = repo.description.length > 34 ? `${repo.description.slice(0, 31)}…` : repo.description;
-  return `<g transform="translate(${x},${y})"><rect width="250" height="104" rx="14" fill="rgba(255,255,255,0.035)" stroke="${BORDER}"/><text x="18" y="28" font-family="${FONT}" font-size="14" font-weight="700" fill="${TEXT}">${esc(repo.name)}</text><text x="232" y="28" text-anchor="end" font-family="${FONT}" font-size="11" fill="#facc15">★ ${repo.stars}</text><text x="18" y="50" font-family="${FONT}" font-size="11" fill="${MUTED}">${esc(description)}</text><circle cx="20" cy="82" r="5" fill="${color}"/><text x="32" y="86" font-family="${FONT}" font-size="10" fill="${MUTED}">${esc(repo.language)}</text></g>`;
-}
+  const head = avatar
+    ? `<image href="${avatar}" x="56" y="52" width="96" height="96" clip-path="url(#avatarClip)" preserveAspectRatio="xMidYMid slice"/>`
+    : `<text x="104" y="114" text-anchor="middle" font-family="${FONT}" font-size="34" font-weight="700" fill="${BLUE}">${esc(
+        stats.name.trim().charAt(0).toUpperCase() || '?',
+      )}</text>`;
 
-function render(data: LiveData) {
-  const { profile, repos, languages } = data;
-  const handle = `@${USERNAME}`;
-  const handleTextWidth = handle.length * 7.2;
-  const pillWidth = Math.ceil(28 + handleTextWidth + 12 + 6 * 7.2 + 16);
-  const pillDotX = 218 + handleTextWidth + 6;
-  const pillBadgeX = pillDotX + 12;
-  const chips = languages.map((item, index) => `<g transform="translate(${24 + (index % 4) * 132},${80 + Math.floor(index / 4) * 42})"><rect width="116" height="26" rx="13" fill="rgba(79,124,255,0.12)" stroke="rgba(79,124,255,0.20)"/><circle cx="14" cy="13" r="4" fill="${index % 2 ? VIOLET : BLUE}"/><text x="25" y="17" font-family="${FONT}" font-size="10" fill="${TEXT}">${esc(item)}</text></g>`).join('');
-  const colors = [BLUE, VIOLET, '#22c55e', '#f97316'];
-  const projectCards = repos.map((repo, index) => project(24 + (index % 4) * 266, 78, repo, colors[index % colors.length])).join('');
-  const paddedProjects = projectCards || '<text x="24" y="112" font-family="' + FONT + '" font-size="12" fill="' + MUTED + '">No public repositories found.</text>';
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-  <defs><linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0b0b12"/><stop offset="1" stop-color="#030305"/></linearGradient><radialGradient id="blueGlow"><stop stop-color="#4f7cff" stop-opacity=".18"/><stop offset="1" stop-color="#4f7cff" stop-opacity="0"/></radialGradient><radialGradient id="violetGlow"><stop stop-color="#a78bfa" stop-opacity=".15"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></radialGradient><clipPath id="avatarClip"><circle cx="104" cy="104" r="64"/></clipPath></defs>
-  <rect width="${W}" height="${H}" rx="26" fill="url(#background)"/><circle cx="100" cy="60" r="320" fill="url(#blueGlow)"/><circle cx="1100" cy="900" r="380" fill="url(#violetGlow)"/><rect x="1" y="1" width="${W - 2}" height="${H - 2}" rx="25" fill="none" stroke="${BORDER}"/>
-  <circle cx="104" cy="104" r="68" fill="#101018" stroke="${BLUE}" stroke-opacity=".45" stroke-width="2"/><image href="${profile.avatar}" x="40" y="40" width="128" height="128" clip-path="url(#avatarClip)" preserveAspectRatio="xMidYMid slice"/><text x="200" y="82" font-family="${FONT}" font-size="44" font-weight="800" fill="${TEXT}">${esc(profile.name)}</text><text x="202" y="113" font-family="${FONT}" font-size="16" fill="${MUTED}">Full-stack developer · Discord infrastructure · Automation</text><rect x="202" y="134" width="${pillWidth}" height="28" rx="14" fill="rgba(79,124,255,0.14)"/><text x="218" y="153" font-family="${FONT}" font-size="12" fill="${BLUE}">${handle}</text><text x="${pillDotX}" y="153" font-family="${FONT}" font-size="12" fill="${VIOLET}">·</text><text x="${pillBadgeX}" y="153" font-family="${FONT}" font-size="12" fill="${VIOLET}">Linavo</text>
-  ${panel(48,210,1104,112,heading('About', 'Building reliable systems, modern dashboards, and Discord bots with a focus on clean design and great user experiences.') + '<text x="24" y="86" font-family="' + FONT + '" font-size="12" fill="' + MUTED + '">Open to collaborations, coding requests, and small freelance tasks · currently learning AI automation integrations</text>')}
-  ${panel(48,346,530,112,heading('GitHub activity', 'Live public profile data') + stat(24,'Repos',String(profile.repos),BLUE,'repos') + stat(184,'Followers',String(profile.followers),VIOLET,'followers') + stat(344,'Following',String(profile.following), '#22c55e','following'))}
-  ${panel(598,346,554,112,heading('Contact', 'Discord is usually the quickest way to reach me') + '<text x="24" y="88" font-family="' + FONT + '" font-size="13" fill="' + BLUE + '">@sorenthedev</text><text x="200" y="88" font-family="' + FONT + '" font-size="13" fill="' + TEXT + '">sorenthedev@gmail.com</text>')}
-  ${panel(48,482,1104,202,heading('Tech stack', 'Languages detected from current public repositories') + (chips || '<text x="24" y="100" font-family="' + FONT + '" font-size="12" fill="' + MUTED + '">No language data found.</text>'))}
-  ${panel(48,708,1104,216,heading('Selected projects', 'Recently updated public repositories') + paddedProjects)}
-  <text x="48" y="955" font-family="${FONT}" font-size="11" fill="${MUTED}">sorenthedev.indevs.in · live GitHub data · quickest replies on Discord</text><text x="1152" y="955" text-anchor="end" font-family="${FONT}" font-size="11" fill="${MUTED}">${USERNAME}</text>
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(
+    stats.name,
+  )}'s GitHub stats">
+  <defs>
+    <radialGradient id="glow" cx="0.18" cy="0.12" r="0.9" gradientUnits="objectBoundingBox"><stop stop-color="#4f7cff" stop-opacity="0.10"/><stop offset="1" stop-color="#040407" stop-opacity="0"/></radialGradient>
+    <clipPath id="avatarClip"><circle cx="104" cy="100" r="48"/></clipPath>
+  </defs>
+  <rect width="${W}" height="${H}" rx="22" fill="#060609"/>
+  <rect width="${W}" height="${H}" rx="22" fill="url(#glow)"/>
+  <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="22" fill="none" stroke="${BORDER}"/>
+  <circle cx="104" cy="100" r="48" fill="#0e0e14" stroke="rgba(255,255,255,0.12)"/>
+  ${head}
+  <text x="944" y="64" text-anchor="end" font-family="${FONT}" font-size="11" fill="${MUTED}">sorenthedev.indevs.in</text>
+  <text x="184" y="92" font-family="${FONT}" font-size="30" font-weight="800" letter-spacing="-0.4" fill="${TEXT}">${esc(
+    stats.name,
+  )}</text>
+  <text x="186" y="118" font-family="${FONT}" font-size="13" fill="${BLUE}">@${esc(USERNAME)}</text>
+  <text x="186" y="144" font-family="${FONT}" font-size="13" fill="${MUTED}">Full-stack developer · Discord infrastructure · Automation</text>
+  <line x1="56" y1="196" x2="944" y2="196" stroke="rgba(255,255,255,0.07)"/>
+  ${statRow}
+  ${track}
+  ${legend}
 </svg>`;
 }
 
-function errorSvg() {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" rx="26" fill="#060609"/><text x="${W / 2}" y="${H / 2}" text-anchor="middle" font-family="${FONT}" font-size="16" fill="${MUTED}">GitHub data is temporarily unavailable</text></svg>`;
+function errorSvg(message: string) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="GitHub stats unavailable">
+  <rect width="${W}" height="${H}" rx="22" fill="#060609"/>
+  <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="22" fill="none" stroke="${BORDER}"/>
+  <text x="${W / 2}" y="${H / 2 + 4}" text-anchor="middle" font-family="${FONT}" font-size="13" fill="${MUTED}">${esc(
+    message,
+  )}</text>
+</svg>`;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET') return res.status(405).end();
+
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Content-Type', 'image/svg+xml');
   res.setHeader('Cache-Control', 'public, max-age=1800');
+
+  const username = String(req.query.username ?? USERNAME).trim() || USERNAME;
+  if (!/^(?!-)[a-zA-Z0-9-]{1,39}(?<!-)$/.test(username)) {
+    return res.status(400).send(errorSvg('Invalid username'));
+  }
+
   try {
-    return res.send(render(await getLiveData()));
+    const [data, avatar] = await Promise.all([
+      getLiveData(username),
+      avatarDataUri(username),
+    ]);
+    return res.send(render(data.stats, data.languages, avatar));
   } catch (error) {
     console.error('profile card error:', error);
-    return res.status(502).send(errorSvg());
+    return res
+      .status(502)
+      .send(errorSvg('GitHub data is temporarily unavailable'));
   }
 }

@@ -117,14 +117,20 @@ interface CommissionsPageProps {
   onBack: () => void;
 }
 
-const CommissionsPage = ({ social, discordId, onBack }: CommissionsPageProps) => {
+const CommissionsPage = ({
+  social,
+  discordId,
+  onBack,
+}: CommissionsPageProps) => {
   const email = social?.email;
   const discordProfileUrl = discordId
     ? `https://discord.com/users/${discordId}`
     : 'https://discord.com/app';
 
   const mailto = (subject: string) =>
-    email ? `mailto:${email}?subject=${encodeURIComponent(subject)}` : discordProfileUrl;
+    email
+      ? `mailto:${email}?subject=${encodeURIComponent(subject)}`
+      : discordProfileUrl;
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -178,7 +184,10 @@ const CommissionsPage = ({ social, discordId, onBack }: CommissionsPageProps) =>
             }`}
             style={
               tier.highlighted
-                ? { boxShadow: '0 0 0 1px rgba(79,124,255,0.4), 0 8px 40px rgba(79,124,255,0.15)' }
+                ? {
+                    boxShadow:
+                      '0 0 0 1px rgba(79,124,255,0.4), 0 8px 40px rgba(79,124,255,0.15)',
+                  }
                 : undefined
             }
           >
@@ -212,11 +221,16 @@ const CommissionsPage = ({ social, discordId, onBack }: CommissionsPageProps) =>
                 {tier.price}
               </span>
             </div>
-            <p className="text-xs text-base-content/50 mb-4">{tier.priceNote}</p>
+            <p className="text-xs text-base-content/50 mb-4">
+              {tier.priceNote}
+            </p>
 
             <ul className="space-y-2 mb-6 flex-1">
               {tier.features.map((feature) => (
-                <li key={feature} className="flex items-start gap-2 text-xs text-base-content/75">
+                <li
+                  key={feature}
+                  className="flex items-start gap-2 text-xs text-base-content/75"
+                >
                   <FaCheckCircle className="w-3.5 h-3.5 mt-0.5 text-success flex-shrink-0" />
                   <span>{feature}</span>
                 </li>
