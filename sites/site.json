@@ -1,0 +1,15 @@
+{
+  "name": "Portfolio",
+  "siteId": "c4a7f1e2-9b3d-4c58-a6d1-7e2f8b0c5d94",
+  "preview": {
+    "url": "https://site-bcd5b46444844f2fa99907edfe1bddc6.freebuff.page",
+    "environmentId": "bcd5b464-4484-4f2f-a999-07edfe1bddc6",
+    "published": true
+  },
+  "production": {
+    "url": "https://site-bf777a9321e24cb1a7ab82de501d5e67.freebuff.page",
+    "environmentId": "bf777a93-21e2-4cb1-a7ab-82de501d5e67",
+    "published": false
+  },
+  "deployManifest": "freebuff.sites.json"
+}

@@ -28,7 +28,6 @@ import GithubStatsCard from './github-stats-card';
 import TechStack from './tech-stack';
 import CommissionsPage from './commissions-page';
 import LegalPage, { PRIVACY_DOC, TERMS_DOC } from './legal-page';
-import LofiAdmin from './lofi-admin';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 
@@ -41,9 +40,6 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
  *   sponsor      -> OxaPay donation page
  *   terms        -> Commission terms of service
  *   privacy      -> Commission privacy policy
- *
- * The Lofi control plane is intentionally outside this public hash router at
- * /control-plane/lofi and is not linked from the portfolio.
  */
 const GitProfile = ({ config }: { config: Config }) => {
   const [sanitizedConfig] = useState<SanitizedConfig | Record<string, never>>(
@@ -186,12 +182,6 @@ const GitProfile = ({ config }: { config: Config }) => {
   };
 
   const pageRoute = route as PageRoute;
-  const isPrivateLofiRoute =
-    typeof window !== 'undefined' && window.location.pathname === '/control-plane/lofi';
-
-  if (isPrivateLofiRoute) {
-    return <LofiAdmin onBack={() => { window.location.href = '/'; }} />;
-  }
 
   return (
     <div className="fade-in min-h-screen">

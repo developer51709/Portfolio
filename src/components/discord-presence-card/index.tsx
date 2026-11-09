@@ -41,15 +41,29 @@ const STATUS_LABELS: Record<DiscordStatus, string> = {
   offline: 'Offline',
 };
 
-/** Returns the path to the appropriate status icon. */
+/** The statuses Discord also draws phone-shaped when the phone holds the presence. */
+const MOBILE_STATUSES: ReadonlySet<DiscordStatus> = new Set([
+  'online',
+  'idle',
+  'dnd',
+]);
+
+/**
+ * Resolves the status icon the way the Niko bots website's mention profile
+ * popups do: only online/idle/dnd change shape on mobile, and a live stream
+ * wins over both.
+ */
 function getStatusIcon(
   status: DiscordStatus,
   mobile: boolean,
   streaming: boolean,
-): string {
-  if (streaming) return `/discord-status/status_streaming.png`;
-  if (mobile) return `/discord-status/status_${status}_mobile.png`;
-  return `/discord-status/status_${status}.png`;
+): { src: string; mobileIcon: boolean } {
+  const shown = streaming ? 'streaming' : status;
+  const mobileIcon = !streaming && mobile && MOBILE_STATUSES.has(status);
+  return {
+    src: `/discord-status/status_${shown}${mobileIcon ? '_mobile' : ''}.png`,
+    mobileIcon,
+  };
 }
 
 /** Formats milliseconds into m:ss */
@@ -257,6 +271,7 @@ const DiscordPresenceCard: React.FC<Props> = ({ lanyard, loading }) => {
     isStreaming,
   );
   const statusLabel = STATUS_LABELS[discord_status] ?? discord_status;
+  const statusTitle = isStreaming ? 'Streaming' : statusLabel;
   const mainActivities = getActivities(activities);
   const customStatus = getCustomStatus(activities);
 
@@ -304,37 +319,45 @@ const DiscordPresenceCard: React.FC<Props> = ({ lanyard, loading }) => {
 
         {/* Status Row — avatar with decoration overlay, status badge, name, clan tag */}
         <div className="flex items-center gap-3 py-1">
-          {/* Avatar container — pulls up into nameplate when enabled */}
-          <div
-            className={`relative flex-shrink-0 w-11 h-11 ${showNameplate ? '-mt-8' : ''}`}
+          {/* Avatar container — pulls up into nameplate when enabled. The
+              status icon sits in a notch masked out of the avatar and its
+              decoration (the Niko mention-popup design) rather than being
+              painted on top of a ring. */}
+          <span
+            className={`discord-status-avatar presence-status-avatar${
+              statusIcon.mobileIcon ? ' is-mobile' : ''
+            }${showNameplate ? ' -mt-8' : ''}`}
           >
-            {/* Base avatar */}
-            <img
-              src={avatarUrl}
-              alt={discord_user.username}
-              className="w-11 h-11 rounded-full object-cover ring-2 ring-base-100"
-            />
+            <span className="discord-status-avatar-art">
+              <span className="discord-status-avatar-art-inner">
+                <img
+                  src={avatarUrl}
+                  alt={discord_user.username}
+                  className="presence-avatar"
+                />
 
-            {/* Avatar decoration overlay */}
-            {decorationUrl && (
-              <img
-                src={decorationUrl}
-                alt="avatar decoration"
-                className="absolute inset-0 w-full h-full pointer-events-none"
-                style={{ transform: 'scale(1.2)' }}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-            )}
+                {/* Avatar decoration, drawn on Discord's 1.2x canvas so it
+                    keeps its overhang outside the avatar. */}
+                {decorationUrl && (
+                  <img
+                    src={decorationUrl}
+                    alt="avatar decoration"
+                    className="presence-avatar-decoration"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                )}
+              </span>
+            </span>
 
-            {/* Status icon — slightly smaller with ring cutout */}
             <img
-              src={statusIcon}
-              alt={discord_status}
-              className="absolute -bottom-0.5 -right-0.5 w-4 h-4 ring-2 ring-base-100 rounded-full"
+              src={statusIcon.src}
+              alt={statusTitle}
+              title={statusTitle}
+              className="discord-status-icon"
             />
-          </div>
+          </span>
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 flex-wrap">

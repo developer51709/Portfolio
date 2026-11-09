@@ -48,8 +48,7 @@
   background-color: rgba(16, 16, 20, 0.35);
   border: 1px solid rgba(231, 231, 236, 0.08);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(22px) saturate(1.5);
 }
 
 .card-body {
@@ -134,10 +133,21 @@
 
 /* Glass pill button (floating sponsor button, nav pill) */
 .glass-btn {
-  background-color: rgba(16, 16, 20, 0.25);
+  background-color: rgba(16, 16, 20, 0.35);
   border: 1px solid rgba(231, 231, 236, 0.15);
-  backdrop-filter: blur(12px) saturate(1.5);
-  -webkit-backdrop-filter: blur(12px) saturate(1.5);
+  backdrop-filter: blur(18px) saturate(1.5);
+}
+
+/* Safari before 18 only understands the prefixed property. The CSS optimizer
+   collapses duplicate standard/prefixed declarations, so the prefixed copies
+   live in their own @supports block instead of beside the standard ones. */
+@supports (-webkit-backdrop-filter: blur(1px)) {
+  .card {
+    -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  }
+  .glass-btn {
+    -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  }
 }
 .glass-btn:hover {
   background-color: rgba(16, 16, 20, 0.45);
@@ -242,6 +252,121 @@
   object-fit: cover;
   border-radius: inherit;
   display: block;
+}
+
+/* ---------------------------------------------------------------------------
+ * Discord status avatar
+ * Ported from the Niko bots website's mention profile popup: the status icon
+ * sits in a notch masked out of the avatar and any avatar decoration, so what
+ * is behind them shows through instead of a painted disc with a ring.
+ * ------------------------------------------------------------------------- */
+
+.discord-status-avatar {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  --status-avatar-size: 76px;
+  --status-icon-size: 17px;
+  --status-gap: calc(var(--status-icon-size) * 0.12);
+  --status-shape-width: 1;
+  --status-notch-size: calc(var(--status-icon-size) + 2 * var(--status-gap));
+  --status-notch-width: calc(
+    var(--status-icon-size) * var(--status-shape-width) + 2 * var(--status-gap)
+  );
+  --status-notch-rect: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2075%20100'%20preserveAspectRatio='none'%3E%3Crect%20width='75'%20height='100'%20rx='16'%20fill='%23000'/%3E%3C/svg%3E");
+}
+
+/* Discord draws mobile as a phone instead of a dot, so the cutout narrows to
+   the phone's silhouette. */
+.discord-status-avatar.is-mobile {
+  --status-shape-width: 0.665;
+}
+
+/* The mask covers the avatar's whole decoration canvas (1.2x the avatar), so
+   the decoration keeps its overhang while both it and the avatar lose the same
+   piece. The notch is placed against the avatar's own corner. */
+.discord-status-avatar-art {
+  position: absolute;
+  inset: -10%;
+  display: block;
+  -webkit-mask-image:
+    linear-gradient(#000 0 0),
+    radial-gradient(circle closest-side, #000 97%, transparent 100%);
+  mask-image:
+    linear-gradient(#000 0 0),
+    radial-gradient(circle closest-side, #000 97%, transparent 100%);
+  -webkit-mask-size:
+    100% 100%,
+    var(--status-notch-width) var(--status-notch-size);
+  mask-size:
+    100% 100%,
+    var(--status-notch-width) var(--status-notch-size);
+  -webkit-mask-position:
+    0 0,
+    calc(1.1 * var(--status-avatar-size) - var(--status-notch-width))
+      calc(1.1 * var(--status-avatar-size) - var(--status-notch-size));
+  mask-position:
+    0 0,
+    calc(1.1 * var(--status-avatar-size) - var(--status-notch-width))
+      calc(1.1 * var(--status-avatar-size) - var(--status-notch-size));
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* The mobile notch is a rectangle at the phone's 3:4 proportion, stretched to
+   the notch box. */
+.discord-status-avatar.is-mobile .discord-status-avatar-art {
+  -webkit-mask-image: linear-gradient(#000 0 0), var(--status-notch-rect);
+  mask-image: linear-gradient(#000 0 0), var(--status-notch-rect);
+}
+
+/* Holds the avatar in place inside the larger mask box. */
+.discord-status-avatar-art-inner {
+  position: absolute;
+  inset: 8.3333%;
+  display: block;
+}
+
+.discord-status-avatar .discord-status-icon {
+  position: absolute;
+  z-index: 2;
+  right: calc((var(--status-notch-width) - var(--status-icon-size)) / 2);
+  bottom: calc((var(--status-notch-size) - var(--status-icon-size)) / 2);
+  width: var(--status-icon-size);
+  height: var(--status-icon-size);
+  object-fit: contain;
+}
+
+/* Presence card surface: 44px avatar using the popup's proportions. */
+.presence-status-avatar {
+  width: 44px;
+  height: 44px;
+  --status-avatar-size: 44px;
+  --status-icon-size: 14px;
+}
+
+.presence-avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #313338;
+}
+
+/* Discord draws a decoration on a canvas 1.2x the avatar and centres the two. */
+.presence-avatar-decoration {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: translate(-50%, -50%) scale(1.2);
+  pointer-events: none;
 }
 
 /* ---------------------------------------------------------------------------
