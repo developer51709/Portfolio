@@ -18,7 +18,7 @@ import DetailsCard from './details-card';
 import { GithubProject } from '../interfaces/github-project';
 import GithubProjectCard from './github-project-card';
 import DiscordPresenceCard from './discord-presence-card';
-import SponsorPage from './sponsor-page';
+import SponsorCard from './sponsor-card';
 import ThreeBackground from './three-background';
 import PageLayout, { PageRoute, SponsorButton } from './page-layout';
 import { useHashRoute } from '../hooks/useHashRoute';
@@ -35,7 +35,7 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
  *   ''           -> Home (profile, Discord presence, GitHub stats, tech stack)
  *   projects     -> GitHub projects grid
  *   commissions  -> Commission pricing page
- *   sponsor      -> OxaPay donation page
+ *   sponsor      -> OxaPay donation popup, overlaid on the current page
  *   terms        -> Commission terms of service
  *   privacy      -> Commission privacy policy
  */
@@ -57,6 +57,7 @@ const GitProfile = ({ config }: { config: Config }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [githubProjects, setGithubProjects] = useState<GithubProject[]>([]);
   const [route, navigate] = useHashRoute();
+  const [sponsorOpenState, setSponsorOpenState] = useState<boolean>(false);
   const {
     data: statsData,
     loading: statsLoading,
@@ -192,9 +193,33 @@ const GitProfile = ({ config }: { config: Config }) => {
   };
 
   // Unknown hashes (e.g. old #/articles links) fall back to the home page.
-  const pageRoute: PageRoute = KNOWN_ROUTES.includes(route as PageRoute)
+  const validRoute: PageRoute = KNOWN_ROUTES.includes(route as PageRoute)
     ? (route as PageRoute)
     : '';
+
+  // The popup is UI state, not a route: opening it must not disturb the page
+  // behind it (no unmount, no scroll reset). #/sponsor is still honoured as a
+  // deep link, rendered over the home page.
+  const pageRoute: PageRoute = validRoute === 'sponsor' ? '' : validRoute;
+  const sponsorOpen = sponsorOpenState || validRoute === 'sponsor';
+
+  const closeSponsor = () => {
+    setSponsorOpenState(false);
+    if (validRoute === 'sponsor') {
+      navigate('');
+    }
+  };
+
+  // Navigating away (browser Back/Forward, a nav click) dismisses the popup.
+  useEffect(() => {
+    if (!sponsorOpen) {
+      return;
+    }
+
+    const dismiss = () => setSponsorOpenState(false);
+    window.addEventListener('hashchange', dismiss);
+    return () => window.removeEventListener('hashchange', dismiss);
+  }, [sponsorOpen]);
 
   return (
     <div className="fade-in min-h-screen">
@@ -209,82 +234,85 @@ const GitProfile = ({ config }: { config: Config }) => {
         />
       ) : (
         <>
-          {!['sponsor', 'terms', 'privacy'].includes(pageRoute) && (
-            <SponsorButton onClick={() => navigate('sponsor')} />
+          {!['terms', 'privacy'].includes(pageRoute) && (
+            <SponsorButton
+              onClick={() => setSponsorOpenState(true)}
+              hidden={sponsorOpen}
+            />
           )}
 
-          {pageRoute === 'sponsor' ? (
-            <SponsorPage onBack={() => navigate('')} />
-          ) : (
-            <PageLayout route={pageRoute} onNavigate={(r) => navigate(r)}>
-              {pageRoute === '' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className="col-span-1 grid grid-cols-1 gap-6 content-start">
-                    <AvatarCard
-                      profile={profile}
-                      loading={loading}
-                      avatarRing={sanitizedConfig.themeConfig.displayAvatarRing}
-                      resumeFileUrl={sanitizedConfig.resume.fileUrl}
-                    />
-                    <DiscordPresenceCard
-                      lanyard={sanitizedConfig.lanyard}
-                      loading={loading}
-                    />
-                    <DetailsCard
-                      profile={profile}
-                      loading={loading}
-                      github={sanitizedConfig.github}
-                      social={sanitizedConfig.social}
-                    />
-                  </div>
-                  <div className="lg:col-span-2 grid grid-cols-1 gap-6 content-start">
-                    <GithubStatsCard
-                      stats={statsData?.stats ?? null}
-                      techStack={statsData?.techStack ?? null}
-                      loading={statsLoading}
-                      error={statsError}
-                      username={sanitizedConfig.github.username}
-                      onRetry={refetchStats}
-                    />
-                    <TechStack
-                      techStack={statsData?.techStack ?? null}
-                      loading={statsLoading}
-                    />
-                  </div>
+          <PageLayout route={pageRoute} onNavigate={(r) => navigate(r)}>
+            {pageRoute === '' && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="col-span-1 grid grid-cols-1 gap-6 content-start">
+                  <AvatarCard
+                    profile={profile}
+                    loading={loading}
+                    avatarRing={sanitizedConfig.themeConfig.displayAvatarRing}
+                    resumeFileUrl={sanitizedConfig.resume.fileUrl}
+                  />
+                  <DiscordPresenceCard
+                    lanyard={sanitizedConfig.lanyard}
+                    loading={loading}
+                  />
+                  <DetailsCard
+                    profile={profile}
+                    loading={loading}
+                    github={sanitizedConfig.github}
+                    social={sanitizedConfig.social}
+                  />
                 </div>
-              )}
-
-              {pageRoute === 'projects' && (
-                <div className="grid grid-cols-1 gap-6">
-                  {sanitizedConfig.projects.github.display && (
-                    <GithubProjectCard
-                      header={sanitizedConfig.projects.github.header}
-                      limit={sanitizedConfig.projects.github.automatic.limit}
-                      githubProjects={githubProjects}
-                      loading={loading}
-                      googleAnalyticsId={sanitizedConfig.googleAnalytics.id}
-                    />
-                  )}
+                <div className="lg:col-span-2 grid grid-cols-1 gap-6 content-start">
+                  <GithubStatsCard
+                    stats={statsData?.stats ?? null}
+                    techStack={statsData?.techStack ?? null}
+                    loading={statsLoading}
+                    error={statsError}
+                    username={sanitizedConfig.github.username}
+                    onRetry={refetchStats}
+                  />
+                  <TechStack
+                    techStack={statsData?.techStack ?? null}
+                    loading={statsLoading}
+                  />
                 </div>
-              )}
+              </div>
+            )}
 
-              {pageRoute === 'commissions' && (
-                <CommissionsPage
-                  social={sanitizedConfig.social}
-                  discordId={sanitizedConfig.lanyard.userId}
-                  onBack={() => navigate('')}
-                />
-              )}
+            {pageRoute === 'projects' && (
+              <div className="grid grid-cols-1 gap-6">
+                {sanitizedConfig.projects.github.display && (
+                  <GithubProjectCard
+                    header={sanitizedConfig.projects.github.header}
+                    limit={sanitizedConfig.projects.github.automatic.limit}
+                    githubProjects={githubProjects}
+                    loading={loading}
+                    googleAnalyticsId={sanitizedConfig.googleAnalytics.id}
+                  />
+                )}
+              </div>
+            )}
 
-              {pageRoute === 'terms' && (
-                <LegalPage document={TERMS_DOC} onBack={() => navigate('')} />
-              )}
+            {pageRoute === 'commissions' && (
+              <CommissionsPage
+                social={sanitizedConfig.social}
+                discordId={sanitizedConfig.lanyard.userId}
+                onBack={() => navigate('')}
+              />
+            )}
 
-              {pageRoute === 'privacy' && (
-                <LegalPage document={PRIVACY_DOC} onBack={() => navigate('')} />
-              )}
-            </PageLayout>
-          )}
+            {pageRoute === 'terms' && (
+              <LegalPage document={TERMS_DOC} onBack={() => navigate('')} />
+            )}
+
+            {pageRoute === 'privacy' && (
+              <LegalPage document={PRIVACY_DOC} onBack={() => navigate('')} />
+            )}
+          </PageLayout>
+
+          {/* The popup overlays whatever page is mounted, which keeps it — and
+              its scroll position — exactly as it was when the popup closes. */}
+          {sponsorOpen && <SponsorCard onClose={closeSponsor} />}
         </>
       )}
     </div>

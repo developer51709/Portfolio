@@ -73,10 +73,21 @@ const PageLayout = ({ route, onNavigate, children }: PageLayoutProps) => (
   </>
 );
 
-export const SponsorButton = ({ onClick }: { onClick: () => void }) => (
+export const SponsorButton = ({
+  onClick,
+  hidden = false,
+}: {
+  onClick: () => void;
+  hidden?: boolean;
+}) => (
   <button
     onClick={onClick}
-    className="btn btn-primary glass-btn fixed bottom-6 right-6 z-50 shadow-lg gap-2 rounded-full px-5"
+    data-sponsor-trigger
+    aria-hidden={hidden || undefined}
+    tabIndex={hidden ? -1 : undefined}
+    className={`btn btn-primary glass-btn fixed bottom-6 right-6 z-50 shadow-lg gap-2 rounded-full px-5 transition-opacity duration-300 ${
+      hidden ? 'opacity-0 pointer-events-none' : 'opacity-100'
+    }`}
     aria-label="Sponsor this project"
   >
     <FaHeart className="w-4 h-4" />

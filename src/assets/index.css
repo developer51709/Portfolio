@@ -62,6 +62,17 @@
   font-weight: 600;
 }
 
+/* Sponsor popup surface: a see-through frosted pane instead of the standard
+   card fill, so the page behind stays visible while the overlay blurs it. */
+.sponsor-glass {
+  background-color: rgba(16, 16, 20, 0.22);
+  border-color: rgba(231, 231, 236, 0.14);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(38px) saturate(1.7);
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -148,6 +159,9 @@
   .glass-btn {
     -webkit-backdrop-filter: blur(18px) saturate(1.5);
   }
+  .sponsor-glass {
+    -webkit-backdrop-filter: blur(38px) saturate(1.7);
+  }
 }
 .glass-btn:hover {
   background-color: rgba(16, 16, 20, 0.45);
@@ -229,6 +243,12 @@
 }
 .input::placeholder {
   color: rgba(231, 231, 236, 0.35);
+}
+
+/* Inputs with a leading "$" (or similar) addon: this rule has to live here
+   because the unlayered .input padding above beats a Tailwind pl-* utility. */
+.input-with-prefix {
+  padding-left: 2rem;
 }
 
 .link {
@@ -407,7 +427,8 @@ body {
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-family:
+    source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
 
 svg {
