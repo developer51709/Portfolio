@@ -556,3 +556,20 @@ svg {
     opacity: 1;
   }
 }
+
+/* Social logos rest monochrome and fade to their brand hue on hover/focus. */
+.social-icon {
+  color: inherit;
+  transition: color 260ms ease;
+}
+
+.social-link-button:hover .social-icon,
+.social-link-button:focus-visible .social-icon {
+  color: var(--brand, currentColor);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .social-icon {
+    transition: none;
+  }
+}

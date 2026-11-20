@@ -3,6 +3,7 @@ import { FaExternalLinkAlt, FaTimes } from 'react-icons/fa';
 import { SocialLink } from '../../interfaces/social-link';
 import { usePopupMorph } from '../../hooks/usePopupMorph';
 import { useSocialProfile } from '../../hooks/useSocialProfile';
+import { socialBrandColor } from '../../utils/socialBrand';
 import { skeleton } from '../../utils';
 
 interface SocialPopupProps {
@@ -24,6 +25,8 @@ interface SocialPopupProps {
 const SocialPopup = ({ link, origin, onClose }: SocialPopupProps) => {
   const { cardRef, visible, requestClose } = usePopupMorph({ origin, onClose });
   const { profile, loading } = useSocialProfile(link);
+  const brandColor =
+    socialBrandColor(profile?.platform ?? link.key) ?? undefined;
 
   return createPortal(
     <div className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center sm:p-6">
@@ -53,7 +56,8 @@ const SocialPopup = ({ link, origin, onClose }: SocialPopupProps) => {
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <span
-                className="glass-surface flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xl text-primary"
+                className="glass-surface flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xl"
+                style={brandColor ? { color: brandColor } : undefined}
                 aria-hidden="true"
               >
                 {link.icon}
@@ -115,7 +119,8 @@ const SocialPopup = ({ link, origin, onClose }: SocialPopupProps) => {
                   />
                 ) : (
                   <span
-                    className="glass-surface flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-xl text-primary"
+                    className="glass-surface flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-xl"
+                    style={brandColor ? { color: brandColor } : undefined}
                     aria-hidden="true"
                   >
                     {link.icon}

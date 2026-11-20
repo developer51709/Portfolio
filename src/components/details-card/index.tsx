@@ -28,6 +28,7 @@ import { FaBluesky, FaSquareThreads, FaTiktok } from 'react-icons/fa6';
 import { MdLocationOn } from 'react-icons/md';
 import { RiMailFill, RiPhoneFill } from 'react-icons/ri';
 import { SiResearchgate, SiX, SiUdemy } from 'react-icons/si';
+import { socialBrandColor } from '../../utils/socialBrand';
 import { Profile } from '../../interfaces/profile';
 import { SocialLink } from '../../interfaces/social-link';
 import SocialPopup from '../social-popup';
@@ -79,9 +80,18 @@ const SocialLinkButton: React.FC<{
     aria-label={`${link.label}: ${link.value}`}
     title={`${link.label} — ${link.value}`}
     onClick={(event) => onOpen(link, event.currentTarget)}
-    className="glass-surface flex aspect-square w-full items-center justify-center rounded-[10px] text-base text-base-content/70 transition-colors hover:text-primary hover:ring-1 hover:ring-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    className="social-link-button glass-surface flex aspect-square w-full items-center justify-center rounded-[10px] text-base text-base-content/70 hover:ring-1 hover:ring-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
   >
-    {link.icon}
+    <span
+      className="social-icon flex items-center justify-center"
+      style={
+        {
+          '--brand': socialBrandColor(link.key) ?? 'currentColor',
+        } as React.CSSProperties
+      }
+    >
+      {link.icon}
+    </span>
   </button>
 );
 
