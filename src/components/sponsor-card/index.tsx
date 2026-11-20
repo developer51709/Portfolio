@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useState } from 'react';
 import {
   FaBolt,
   FaCode,
@@ -14,13 +8,9 @@ import {
   FaTimes,
 } from 'react-icons/fa';
 import { SiBitcoin, SiEthereum, SiLitecoin, SiTether } from 'react-icons/si';
-import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { usePopupMorph } from '../../hooks/usePopupMorph';
 
 const PRESET_AMOUNTS = [3, 5, 10, 25];
-
-const CARD_RADIUS = '1.25rem';
-const MORPH_MS = 420;
-const CLOSE_MS = 300;
 
 const WHERE_IT_GOES = [
   {
@@ -42,10 +32,6 @@ const formatAmount = (value: number): string =>
     ? `$${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
     : '$0';
 
-const prefersReducedMotion = (): boolean =>
-  typeof window !== 'undefined' &&
-  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
 interface SponsorCardProps {
   onClose: () => void;
 }
@@ -56,8 +42,8 @@ interface SponsorCardProps {
  * #/sponsor) and can be dismissed with the close button, the backdrop, or Esc.
  *
  * The popup does not simply appear: it starts as the floating Sponsor button's
- * geometry and expands into the card (measured FLIP transform), while the
- * backdrop and the content cross-fade in. Closing plays the same thing in
+ * geometry and expands into the card (the shared `usePopupMorph` FLIP), while
+ * the backdrop and the content cross-fade in. Closing plays the same thing in
  * reverse before the route changes, and both are skipped when the visitor asks
  * for reduced motion.
  *
@@ -69,122 +55,15 @@ const SponsorCard = ({ onClose }: SponsorCardProps) => {
   const [customAmount, setCustomAmount] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [visible, setVisible] = useState(false);
-  const [settled, setSettled] = useState(false);
-
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const morphFrom = useRef('none');
-  const morphRadius = useRef(CARD_RADIUS);
-  const closeTimer = useRef<number | null>(null);
-
-  // The page stays mounted and keeps its scroll position while the popup is open.
-  useBodyScrollLock();
+  // Grows out of the floating sponsor button and shrinks back into it.
+  const { cardRef, visible, settled, requestClose } = usePopupMorph({
+    origin: () => document.querySelector<HTMLElement>('[data-sponsor-trigger]'),
+    closingOpacity: 0.65,
+    onClose,
+  });
 
   const effectiveAmount = customAmount ? Number(customAmount) : amount;
   const amountIsValid = Number.isFinite(effectiveAmount) && effectiveAmount > 0;
-
-  // Grow the card out of the sponsor button: measure both boxes, park the card
-  // on the button, then release it to its resting geometry.
-  useLayoutEffect(() => {
-    const card = dialogRef.current;
-    const trigger = document.querySelector<HTMLElement>(
-      '[data-sponsor-trigger]',
-    );
-    if (!card || !trigger || prefersReducedMotion()) {
-      return;
-    }
-
-    const cardBox = card.getBoundingClientRect();
-    const triggerBox = trigger.getBoundingClientRect();
-    if (!cardBox.width || !cardBox.height || !triggerBox.width) {
-      return;
-    }
-
-    const scaleX = triggerBox.width / cardBox.width;
-    const scaleY = triggerBox.height / cardBox.height;
-    const dx =
-      triggerBox.left +
-      triggerBox.width / 2 -
-      (cardBox.left + cardBox.width / 2);
-    const dy =
-      triggerBox.top +
-      triggerBox.height / 2 -
-      (cardBox.top + cardBox.height / 2);
-
-    morphFrom.current = `translate(${dx}px, ${dy}px) scale(${scaleX}, ${scaleY})`;
-    morphRadius.current = `${triggerBox.height / 2}px`;
-
-    card.style.transition = 'none';
-    card.style.transformOrigin = 'center';
-    card.style.transform = morphFrom.current;
-    card.style.borderRadius = morphRadius.current;
-
-    const frame = requestAnimationFrame(() => {
-      card.style.transition = `transform ${MORPH_MS}ms cubic-bezier(0.22, 1, 0.36, 1), border-radius ${MORPH_MS}ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease`;
-      card.style.transform = 'none';
-      card.style.borderRadius = CARD_RADIUS;
-    });
-
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  // Fade the backdrop and content in a frame after mount, and only allow the
-  // card to scroll once the morph has finished (no scrollbar mid-animation).
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => setVisible(true));
-    const timer = window.setTimeout(() => setSettled(true), MORPH_MS + 60);
-
-    return () => {
-      cancelAnimationFrame(frame);
-      window.clearTimeout(timer);
-    };
-  }, []);
-
-  const requestClose = useCallback(() => {
-    if (closeTimer.current !== null) {
-      return;
-    }
-
-    const card = dialogRef.current;
-    if (!card || prefersReducedMotion() || morphFrom.current === 'none') {
-      onClose();
-      return;
-    }
-
-    setVisible(false);
-    setSettled(false);
-    card.style.transition = `transform ${CLOSE_MS}ms cubic-bezier(0.4, 0, 0.6, 1), border-radius ${CLOSE_MS}ms ease, opacity ${CLOSE_MS}ms ease`;
-    card.style.transform = morphFrom.current;
-    card.style.borderRadius = morphRadius.current;
-    card.style.opacity = '0.65';
-    closeTimer.current = window.setTimeout(onClose, CLOSE_MS);
-  }, [onClose]);
-
-  const closeRef = useRef(requestClose);
-  useEffect(() => {
-    closeRef.current = requestClose;
-  }, [requestClose]);
-
-  useEffect(() => {
-    return () => {
-      if (closeTimer.current !== null) {
-        window.clearTimeout(closeTimer.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        closeRef.current();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown);
-    dialogRef.current?.focus({ preventScroll: true });
-
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
 
   const handleDonate = async () => {
     setError(null);
@@ -234,7 +113,7 @@ const SponsorCard = ({ onClose }: SponsorCardProps) => {
       />
 
       <div
-        ref={dialogRef}
+        ref={cardRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="sponsor-title"

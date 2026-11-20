@@ -1,10 +1,11 @@
 /**
  * Freebuff Sites worker for the Portfolio SPA.
  *
- * Serves the Vite build from `env.ASSETS` and implements the three API routes
- * the browser calls: `/api/github-stats`, `/api/spotify-user` and
- * `/api/create-invoice`. These mirror the Vercel functions in `api/` but use
- * only Workers-compatible Web APIs (fetch, Headers, btoa, Map).
+ * Serves the Vite build from `env.ASSETS` and implements the API routes the
+ * browser calls: `/api/github-stats`, `/api/github-contributions`,
+ * `/api/spotify-user` and `/api/create-invoice`. These mirror the Vercel
+ * functions in `api/` but use only Workers-compatible Web APIs (fetch, Headers,
+ * btoa, Map).
  */
 
 const GITHUB_API = 'https://api.github.com';
@@ -246,6 +247,163 @@ async function handleGithubStats(request, env, cors) {
   }
 }
 
+/**
+ * Groups days into Sunday-first weeks for the calendar grid. A day missing
+ * from a week (a partial first or last week) stays null so the graph keeps
+ * its column alignment.
+ */
+function groupIntoWeeks(days) {
+  const byWeek = new Map();
+  for (const day of days) {
+    const date = new Date(`${day.date}T00:00:00Z`);
+    if (Number.isNaN(date.getTime())) continue;
+    const weekday = date.getUTCDay();
+    const start = new Date(date);
+    start.setUTCDate(start.getUTCDate() - weekday);
+    const key = start.toISOString().slice(0, 10);
+    let week = byWeek.get(key);
+    if (!week) {
+      week = new Array(7).fill(null);
+      byWeek.set(key, week);
+    }
+    week[weekday] = day;
+  }
+  return [...byWeek.values()];
+}
+
+/**
+ * GitHub's own levels are relative quartiles of the year's daily counts, so
+ * reproduce that for the GraphQL path (the HTML calendar already ships levels).
+ */
+function applyContributionLevels(days) {
+  const counts = days
+    .map((day) => day.count ?? 0)
+    .filter((count) => count > 0)
+    .sort((a, b) => a - b);
+  if (counts.length === 0) {
+    for (const day of days) day.level = 0;
+    return;
+  }
+  const at = (p) =>
+    counts[Math.min(counts.length - 1, Math.floor(p * (counts.length - 1)))];
+  const t1 = at(0.25);
+  const t2 = at(0.5);
+  const t3 = at(0.75);
+  for (const day of days) {
+    const count = day.count ?? 0;
+    day.level =
+      count <= 0 ? 0 : count <= t1 ? 1 : count <= t2 ? 2 : count <= t3 ? 3 : 4;
+  }
+}
+
+async function graphqlContributionCalendar(username, token) {
+  const to = new Date();
+  const from = new Date(to);
+  from.setUTCFullYear(from.getUTCFullYear() - 1);
+
+  const query = `query ($login: String!, $from: DateTime!, $to: DateTime!) {
+    user(login: $login) {
+      contributionsCollection(from: $from, to: $to) {
+        contributionCalendar {
+          totalContributions
+          weeks { contributionDays { date contributionCount } }
+        }
+      }
+    }
+  }`;
+
+  const response = await fetch(`${GITHUB_API}/graphql`, {
+    method: 'POST',
+    headers: {
+      Authorization: `bearer ${token}`,
+      'content-type': 'application/json',
+      'user-agent': 'portfolio-contributions',
+    },
+    body: JSON.stringify({
+      query,
+      variables: {
+        login: username,
+        from: from.toISOString(),
+        to: to.toISOString(),
+      },
+    }),
+  });
+
+  if (!response.ok) throw new Error(`GitHub GraphQL HTTP ${response.status}`);
+  const payload = await response.json();
+  if (payload?.errors?.length) {
+    throw new Error(payload.errors[0]?.message || 'GitHub GraphQL error');
+  }
+
+  const calendar =
+    payload?.data?.user?.contributionsCollection?.contributionCalendar;
+  if (!calendar) throw new Error('GitHub returned no contribution calendar');
+
+  const days = calendar.weeks
+    .flatMap((week) => week.contributionDays)
+    .map((day) => ({
+      date: day.date,
+      count: Number(day.contributionCount ?? 0),
+      level: 0,
+    }));
+  applyContributionLevels(days);
+
+  return {
+    total: Number(calendar.totalContributions ?? 0),
+    from: days[0]?.date ?? null,
+    to: days[days.length - 1]?.date ?? null,
+    weeks: groupIntoWeeks(days),
+  };
+}
+
+async function handleGithubContributions(request, env, cors) {
+  if (request.method === 'OPTIONS') return preflight(cors);
+  if (request.method !== 'GET')
+    return json({ error: 'Method not allowed' }, 405, cors);
+
+  const username = (
+    new URL(request.url).searchParams.get('username') ?? ''
+  ).trim();
+  if (!username || !/^[a-zA-Z0-9-]+$/.test(username)) {
+    return json({ error: 'A valid `username` is required' }, 400, cors);
+  }
+
+  const cacheKey = `contributions:${username}`;
+  const cached = getCached(cacheKey);
+  if (cached) {
+    return json(cached, 200, {
+      ...cors,
+      'cache-control': 'public, max-age=1800',
+    });
+  }
+
+  if (!env.GITHUB_TOKEN) {
+    return json(
+      {
+        error:
+          'GITHUB_TOKEN is not configured, so contributions cannot be loaded',
+      },
+      503,
+      cors,
+    );
+  }
+
+  try {
+    const calendar = await graphqlContributionCalendar(
+      username,
+      env.GITHUB_TOKEN,
+    );
+    setCached(cacheKey, calendar, 30 * 60 * 1000);
+    return json(calendar, 200, {
+      ...cors,
+      'cache-control': 'public, max-age=1800',
+    });
+  } catch (error) {
+    console.error('github-contributions error:', error);
+    return json({ error: 'Failed to fetch contributions' }, 502, cors);
+  }
+}
+
 const tokenCache = { token: null, expiresAt: 0 };
 
 async function getSpotifyToken(clientId, clientSecret) {
@@ -427,6 +585,8 @@ export default {
 
     if (path === '/api/github-stats')
       return handleGithubStats(request, env, cors);
+    if (path === '/api/github-contributions')
+      return handleGithubContributions(request, env, cors);
     if (path === '/api/spotify-user')
       return handleSpotifyUser(request, env, cors);
     if (path === '/api/create-invoice')
