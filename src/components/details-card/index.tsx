@@ -125,6 +125,9 @@ const SpotifyLink: React.FC<{
         key: 'spotify',
         label: 'Spotify',
         value: displayName || userId,
+        // The visible value becomes the display name once /api/spotify-user
+        // answers, so the profile lookup must keep the raw user id.
+        apiHandle: userId,
         href: `https://open.spotify.com/user/${userId}`,
         icon: <FaSpotify />,
       }}

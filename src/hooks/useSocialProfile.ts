@@ -38,13 +38,27 @@ async function fetchFromServer(
 }
 
 /**
+ * Spotify is linked with the display name as its label, so the profile id is
+ * always taken from the card's API handle or the profile URL - never from what
+ * the link happens to display.
+ */
+function resolveHandle(link: SocialLink) {
+  if (link.apiHandle) return link.apiHandle;
+  if (link.key === 'spotify') {
+    const match = /\/user\/([A-Za-z0-9]+)/.exec(link.href || '');
+    if (match?.[1]) return match[1];
+  }
+  return link.value;
+}
+
+/**
  * Loads the profile card for a social link (avatar, name, bio and counters).
  * Platforms without stats simply resolve to `profile: null`, and the popup
  * falls back to the handle it already knows.
  */
 export function useSocialProfile(link: SocialLink) {
-  const { key, apiHandle, value } = link;
-  const handle = apiHandle ?? value;
+  const { key } = link;
+  const handle = resolveHandle(link);
   const supported =
     CLIENT_STAT_PLATFORMS.has(key) || SERVER_STAT_PLATFORMS.has(key);
   const [profile, setProfile] = useState<SocialProfile | null>(null);

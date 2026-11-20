@@ -638,13 +638,22 @@ async function fetchSocialProfile(
   }
 
   if (platform === 'spotify') {
+    // The public page always has the display name and avatar, while the app
+    // token only adds follower and playlist totals, so fetch both and merge.
+    const scrapedPromise = fetchSpotifyScrape(handle).catch(() => null);
+    const fallback = async (): Promise<SocialProfile> => {
+      const scraped = await scrapedPromise;
+      if (scraped) return scraped;
+      throw new Error('Spotify profile unavailable');
+    };
+
     const clientId = process.env.SPOTIFY_CLIENT_ID;
     const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
     if (!clientId || !clientSecret) {
-      return fetchSpotifyScrape(handle);
+      return fallback();
     }
     const token = await getSpotifyToken(clientId, clientSecret);
-    if (!token) return fetchSpotifyScrape(handle);
+    if (!token) return fallback();
 
     const headers = { Authorization: `Bearer ${token}` };
     const [profileResponse, playlistsResponse] = await Promise.all([
@@ -656,11 +665,10 @@ async function fetchSocialProfile(
         { headers },
       ),
     ]);
-    if (!profileResponse.ok) {
-      // The public profile endpoint rejects app tokens, so fall back to the
-      // prerendered page instead of failing the popup.
-      return fetchSpotifyScrape(handle);
-    }
+    // Spotify now rejects the profile endpoint for app tokens, so a scrape is
+    // the normal path; merge whatever the API does return when it works.
+    if (!profileResponse.ok) return fallback();
+
     const profile = (await profileResponse.json()) as {
       id: string;
       display_name?: string | null;
@@ -671,19 +679,26 @@ async function fetchSocialProfile(
     const playlists = playlistsResponse.ok
       ? ((await playlistsResponse.json()) as { total?: number })
       : null;
+    const scraped = await scrapedPromise;
+    const followers = profile.followers?.total;
+    const playlistTotal = playlists?.total;
+
     return {
       platform,
-      displayName: profile.display_name || profile.id,
-      handle: `@${profile.id}`,
-      avatar: profile.images?.[0]?.url ?? null,
+      displayName: profile.display_name || scraped?.displayName || profile.id,
+      handle: `@${profile.id ?? handle}`,
+      avatar: profile.images?.[0]?.url ?? scraped?.avatar ?? null,
       bio: '',
       profileUrl:
         profile.external_urls?.spotify ??
+        scraped?.profileUrl ??
         `https://open.spotify.com/user/${profile.id}`,
       stats: [
-        { label: 'Followers', value: Number(profile.followers?.total ?? 0) },
-        ...(playlists
-          ? [{ label: 'Playlists', value: Number(playlists.total ?? 0) }]
+        ...(typeof followers === 'number'
+          ? [{ label: 'Followers', value: followers }]
+          : []),
+        ...(typeof playlistTotal === 'number'
+          ? [{ label: 'Playlists', value: playlistTotal }]
           : []),
       ],
     };
