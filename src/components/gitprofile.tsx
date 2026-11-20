@@ -297,7 +297,6 @@ const GitProfile = ({ config }: { config: Config }) => {
               <CommissionsPage
                 social={sanitizedConfig.social}
                 discordId={sanitizedConfig.lanyard.userId}
-                onBack={() => navigate('')}
               />
             )}
 

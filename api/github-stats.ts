@@ -30,6 +30,58 @@ interface RepoLanguages {
   [language: string]: number;
 }
 
+/**
+ * Owned, non-forked repositories for `username`.
+ *
+ * When the token belongs to that account, /user/repos is used so private
+ * repositories count towards the language totals — otherwise the measurements
+ * are skewed towards public work. Privacy: only aggregated byte totals and
+ * per-language repository counts are ever returned; names and URLs stay here.
+ */
+async function fetchOwnedRepos(
+  username: string,
+  headers: Record<string, string>,
+): Promise<Array<Record<string, unknown>>> {
+  const all: Array<Record<string, unknown>> = [];
+
+  const collect = async (path: string): Promise<boolean> => {
+    // Up to 3 pages of 100 — plenty for a personal portfolio.
+    for (let page = 1; page <= 3; page++) {
+      const r = await fetch(`${GITHUB_API}${path}&page=${page}`, { headers });
+      if (!r.ok) return false;
+      const batch = (await r.json()) as Array<Record<string, unknown>>;
+      all.push(...batch);
+      if (batch.length < 100) return true;
+    }
+    return true;
+  };
+
+  if (headers.Authorization) {
+    const complete = await collect(
+      '/user/repos?per_page=100&sort=updated&affiliation=owner&visibility=all',
+    );
+    const owned = all.filter(
+      (r) =>
+        r.owner &&
+        String((r.owner as Record<string, unknown>).login).toLowerCase() ===
+          username.toLowerCase(),
+    );
+    if (complete && owned.length > 0) {
+      return owned.filter((r) => !r.fork);
+    }
+    // Token belongs to another account or exposes nothing: use public data.
+    all.length = 0;
+  }
+
+  await collect(`/users/${username}/repos?per_page=100&sort=updated`);
+  return all.filter(
+    (r) =>
+      !r.fork &&
+      r.owner &&
+      (r.owner as Record<string, unknown>).login === username,
+  );
+}
+
 export interface TechStackEntry {
   language: string;
   /** Total bytes of this language across all owned, non-forked repos. */
@@ -94,33 +146,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Non-null from here on — TypeScript-safe alias.
     const profile = profileRecord;
 
-    // --- Repos (owned, non-forked) ---
+    // --- Repos (owned, non-forked, private included when the token sees them) ---
     const reposKey = `repos:${username}`;
     let repos = getCached<Array<Record<string, unknown>>>(reposKey);
     if (!repos) {
-      const all: Array<Record<string, unknown>> = [];
-      // Up to 3 pages of 100 — plenty for a personal portfolio.
-      for (let page = 1; page <= 3; page++) {
-        const r = await fetch(
-          `${GITHUB_API}/users/${username}/repos?per_page=100&sort=updated&page=${page}`,
-          { headers },
-        );
-        if (!r.ok) break;
-        const batch = (await r.json()) as Array<Record<string, unknown>>;
-        all.push(...batch);
-        if (batch.length < 100) break;
-      }
-      repos = all.filter(
-        (r) =>
-          !r.fork &&
-          r.owner &&
-          (r.owner as Record<string, unknown>).login === username,
-      );
+      repos = await fetchOwnedRepos(username, headers);
       setCached(reposKey, repos);
     }
     const ownedRepos = repos;
 
     // --- Tech stack (aggregated language bytes) ---
+    // Aggregation only: the response carries language totals, never a
+    // repository name — private repos are indistinguishable from public ones.
     const techKey = `tech:${username}`;
     let techStack = getCached<TechStackEntry[]>(techKey);
     if (!techStack) {

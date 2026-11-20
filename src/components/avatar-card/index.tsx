@@ -29,18 +29,18 @@ const AvatarCard: React.FC<AvatarCardProps> = ({
       <div className="grid place-items-center py-8">
         {loading || !profile ? (
           <div className="avatar opacity-90">
-            <div className="mb-8 rounded-full w-32 h-32">
+            <div className="mb-8 rounded-full w-32 h-32 overflow-hidden">
               {skeleton({
                 widthCls: 'w-full',
                 heightCls: 'h-full',
-                shape: '',
+                shape: 'rounded-full',
               })}
             </div>
           </div>
         ) : (
           <div className="avatar opacity-90">
             <div
-              className={`mb-8 rounded-full w-32 h-32 ${
+              className={`mb-8 rounded-full w-32 h-32 overflow-hidden ${
                 avatarRing
                   ? 'ring-3 ring-primary ring-offset-base-100 ring-offset-2'
                   : ''
@@ -53,7 +53,7 @@ const AvatarCard: React.FC<AvatarCardProps> = ({
                   placeholder={skeleton({
                     widthCls: 'w-full',
                     heightCls: 'h-full',
-                    shape: '',
+                    shape: 'rounded-full',
                   })}
                 />
               }

@@ -14,6 +14,7 @@ import {
   FaTimes,
 } from 'react-icons/fa';
 import { SiBitcoin, SiEthereum, SiLitecoin, SiTether } from 'react-icons/si';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 const PRESET_AMOUNTS = [3, 5, 10, 25];
 
@@ -75,6 +76,9 @@ const SponsorCard = ({ onClose }: SponsorCardProps) => {
   const morphFrom = useRef('none');
   const morphRadius = useRef(CARD_RADIUS);
   const closeTimer = useRef<number | null>(null);
+
+  // The page stays mounted and keeps its scroll position while the popup is open.
+  useBodyScrollLock();
 
   const effectiveAmount = customAmount ? Number(customAmount) : amount;
   const amountIsValid = Number.isFinite(effectiveAmount) && effectiveAmount > 0;
@@ -177,29 +181,9 @@ const SponsorCard = ({ onClose }: SponsorCardProps) => {
     };
 
     document.addEventListener('keydown', onKeyDown);
-
-    // Lock scrolling without moving anything: the page stays mounted and keeps
-    // its scroll position, and the scrollbar's width is reserved as padding so
-    // the layout behind the popup does not shift when the bar disappears.
-    const { body } = document;
-    const previousOverflow = body.style.overflow;
-    const previousPaddingRight = body.style.paddingRight;
-    const scrollbarWidth =
-      window.innerWidth - document.documentElement.clientWidth;
-
-    body.style.overflow = 'hidden';
-    if (scrollbarWidth > 0) {
-      const currentPadding = parseFloat(getComputedStyle(body).paddingRight);
-      body.style.paddingRight = `${(Number.isFinite(currentPadding) ? currentPadding : 0) + scrollbarWidth}px`;
-    }
-
     dialogRef.current?.focus({ preventScroll: true });
 
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      body.style.overflow = previousOverflow;
-      body.style.paddingRight = previousPaddingRight;
-    };
+    return () => document.removeEventListener('keydown', onKeyDown);
   }, []);
 
   const handleDonate = async () => {

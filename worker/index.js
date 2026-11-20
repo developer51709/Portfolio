@@ -71,11 +71,62 @@ function preflight(cors) {
   return new Response(null, { status: 204, headers: cors });
 }
 
+/**
+ * Owned, non-forked repositories for `username`.
+ *
+ * When the token belongs to that account, /user/repos is used so private
+ * repositories count towards the language totals — otherwise the measurements
+ * are skewed towards public work. Privacy: only aggregated byte totals and
+ * per-language repository counts are ever returned; names, URLs and per-repo
+ * figures stay on the server.
+ */
+async function fetchOwnedRepos(username, headers) {
+  const all = [];
+
+  const collect = async (path) => {
+    for (let page = 1; page <= 3; page++) {
+      const res = await githubFetch(
+        `${GITHUB_API}${path}&page=${page}`,
+        headers,
+      );
+      if (!res.ok) return false;
+      const batch = await res.json();
+      all.push(...batch);
+      if (batch.length < 100) return true;
+    }
+    return true;
+  };
+
+  if (headers.Authorization) {
+    const complete = await collect(
+      '/user/repos?per_page=100&sort=updated&affiliation=owner&visibility=all',
+    );
+    const owned = all.filter(
+      (repo) =>
+        repo.owner &&
+        String(repo.owner.login).toLowerCase() === username.toLowerCase(),
+    );
+    if (complete && owned.length > 0) {
+      return owned.filter((repo) => !repo.fork);
+    }
+    // Token belongs to another account or exposes nothing: use public data.
+    all.length = 0;
+  }
+
+  await collect(`/users/${username}/repos?per_page=100&sort=updated`);
+  return all.filter(
+    (repo) => !repo.fork && repo.owner && repo.owner.login === username,
+  );
+}
+
 async function handleGithubStats(request, env, cors) {
   if (request.method === 'OPTIONS') return preflight(cors);
-  if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405, cors);
+  if (request.method !== 'GET')
+    return json({ error: 'Method not allowed' }, 405, cors);
 
-  const username = (new URL(request.url).searchParams.get('username') ?? '').trim();
+  const username = (
+    new URL(request.url).searchParams.get('username') ?? ''
+  ).trim();
   if (!username || !/^[a-zA-Z0-9-]+$/.test(username)) {
     return json({ error: 'A valid `username` is required' }, 400, cors);
   }
@@ -117,23 +168,12 @@ async function handleGithubStats(request, env, cors) {
     const reposKey = `repos:${username}`;
     let repos = getCached(reposKey);
     if (!repos) {
-      const all = [];
-      for (let page = 1; page <= 3; page++) {
-        const res = await githubFetch(
-          `${GITHUB_API}/users/${username}/repos?per_page=100&sort=updated&page=${page}`,
-          headers,
-        );
-        if (!res.ok) break;
-        const batch = await res.json();
-        all.push(...batch);
-        if (batch.length < 100) break;
-      }
-      repos = all.filter(
-        (repo) => !repo.fork && repo.owner && repo.owner.login === username,
-      );
+      repos = await fetchOwnedRepos(username, headers);
       setCached(reposKey, repos);
     }
 
+    // Aggregation only: the response below carries language totals, never a
+    // repository name — private repos are indistinguishable from public ones.
     const techKey = `tech:${username}`;
     let techStack = getCached(techKey);
     if (!techStack) {
@@ -147,7 +187,10 @@ async function handleGithubStats(request, env, cors) {
         const results = await Promise.all(
           batch.map(async (repo) => {
             try {
-              const res = await githubFetch(`${GITHUB_API}/repos/${username}/${repo.name}/languages`, headers);
+              const res = await githubFetch(
+                `${GITHUB_API}/repos/${username}/${repo.name}/languages`,
+                headers,
+              );
               if (!res.ok) return null;
               return await res.json();
             } catch {
@@ -183,8 +226,14 @@ async function handleGithubStats(request, env, cors) {
       publicRepos: Number(profile.public_repos || 0),
       followers: Number(profile.followers || 0),
       following: Number(profile.following || 0),
-      totalStars: repos.reduce((sum, repo) => sum + Number(repo.stargazers_count || 0), 0),
-      totalForks: repos.reduce((sum, repo) => sum + Number(repo.forks_count || 0), 0),
+      totalStars: repos.reduce(
+        (sum, repo) => sum + Number(repo.stargazers_count || 0),
+        0,
+      ),
+      totalForks: repos.reduce(
+        (sum, repo) => sum + Number(repo.forks_count || 0),
+        0,
+      ),
     };
 
     return json({ techStack, stats }, 200, {
@@ -224,7 +273,8 @@ async function getSpotifyToken(clientId, clientSecret) {
 
 async function handleSpotifyUser(request, env, cors) {
   if (request.method === 'OPTIONS') return preflight(cors);
-  if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405, cors);
+  if (request.method !== 'GET')
+    return json({ error: 'Method not allowed' }, 405, cors);
 
   const clientId = env.SPOTIFY_CLIENT_ID;
   const clientSecret = env.SPOTIFY_CLIENT_SECRET;
@@ -237,7 +287,8 @@ async function handleSpotifyUser(request, env, cors) {
   }
 
   const userId = (new URL(request.url).searchParams.get('id') ?? '').trim();
-  if (!userId) return json({ error: 'A Spotify user `id` is required' }, 400, cors);
+  if (!userId)
+    return json({ error: 'A Spotify user `id` is required' }, 400, cors);
 
   const cacheKey = `spotify:${userId}`;
   const cached = getCached(cacheKey);
@@ -245,18 +296,26 @@ async function handleSpotifyUser(request, env, cors) {
 
   try {
     const token = await getSpotifyToken(clientId, clientSecret);
-    if (!token) return json({ error: 'Failed to authenticate with Spotify' }, 502, cors);
+    if (!token)
+      return json({ error: 'Failed to authenticate with Spotify' }, 502, cors);
 
-    const res = await fetch(`https://api.spotify.com/v1/users/${encodeURIComponent(userId)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await fetch(
+      `https://api.spotify.com/v1/users/${encodeURIComponent(userId)}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
 
     if (res.status === 404) {
       setCached(cacheKey, null, PROFILE_TTL_MS);
       return json({ profile: null }, 200, cors);
     }
     if (!res.ok) {
-      return json({ error: `Spotify profile fetch failed (HTTP ${res.status})` }, res.status, cors);
+      return json(
+        { error: `Spotify profile fetch failed (HTTP ${res.status})` },
+        res.status,
+        cors,
+      );
     }
 
     const profile = await res.json();
@@ -285,11 +344,16 @@ function isRateLimited(ip) {
 
 async function handleCreateInvoice(request, env, cors) {
   if (request.method === 'OPTIONS') return preflight(cors);
-  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405, cors);
+  if (request.method !== 'POST')
+    return json({ error: 'Method not allowed' }, 405, cors);
 
   const apiKey = env.OXAPAY_MERCHANT_API_KEY;
   if (!apiKey) {
-    return json({ error: 'OXAPAY_MERCHANT_API_KEY is not configured' }, 500, cors);
+    return json(
+      { error: 'OXAPAY_MERCHANT_API_KEY is not configured' },
+      500,
+      cors,
+    );
   }
 
   const ip =
@@ -344,7 +408,11 @@ async function handleCreateInvoice(request, env, cors) {
       );
     }
 
-    return json({ paymentUrl: data.data.payment_url, trackId: data.data.track_id }, 200, cors);
+    return json(
+      { paymentUrl: data.data.payment_url, trackId: data.data.track_id },
+      200,
+      cors,
+    );
   } catch (error) {
     console.error('OxaPay invoice error:', error);
     return json({ error: 'Payment gateway is unavailable' }, 502, cors);
@@ -357,10 +425,14 @@ export default {
     const path = pathname.replace(/\/+$/, '') || '/';
     const cors = corsHeaders(request, env);
 
-    if (path === '/api/github-stats') return handleGithubStats(request, env, cors);
-    if (path === '/api/spotify-user') return handleSpotifyUser(request, env, cors);
-    if (path === '/api/create-invoice') return handleCreateInvoice(request, env, cors);
-    if (path.startsWith('/api/')) return json({ error: 'Not found' }, 404, cors);
+    if (path === '/api/github-stats')
+      return handleGithubStats(request, env, cors);
+    if (path === '/api/spotify-user')
+      return handleSpotifyUser(request, env, cors);
+    if (path === '/api/create-invoice')
+      return handleCreateInvoice(request, env, cors);
+    if (path.startsWith('/api/'))
+      return json({ error: 'Not found' }, 404, cors);
 
     return env.ASSETS.fetch(request);
   },

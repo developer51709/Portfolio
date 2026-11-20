@@ -1,20 +1,10 @@
 import React from 'react';
 import { hotjar } from 'react-hotjar';
-import { LOCAL_STORAGE_KEY_NAME } from '../constants';
-
-import { DEFAULT_THEMES } from '../constants/default-themes';
 import colors from '../data/colors.json';
 import {
   SanitizedConfig,
   SanitizedHotjar,
-  SanitizedThemeConfig,
 } from '../interfaces/sanitized-config';
-
-export const isDarkishTheme = (appliedTheme: string): boolean => {
-  return ['dark', 'halloween', 'forest', 'black', 'luxury', 'dracula'].includes(
-    appliedTheme,
-  );
-};
 
 type EventParams = {
   [key: string]: string;
@@ -51,15 +41,6 @@ export const getSanitizedConfig = (
             projects: config?.projects?.github?.manual?.projects || [],
           },
         },
-        external: {
-          header: config?.projects?.external?.header || 'My Projects',
-          projects: config?.projects?.external?.projects || [],
-        },
-      },
-      seo: {
-        title: config?.seo?.title,
-        description: config?.seo?.description,
-        imageURL: config?.seo?.imageURL,
       },
       social: {
         linkedin: config?.social?.linkedin,
@@ -94,25 +75,6 @@ export const getSanitizedConfig = (
       resume: {
         fileUrl: config?.resume?.fileUrl || '',
       },
-      skills: config?.skills || [],
-      experiences:
-        config?.experiences?.filter(
-          (experience) =>
-            experience.company ||
-            experience.position ||
-            experience.from ||
-            experience.to,
-        ) || [],
-      certifications:
-        config?.certifications?.filter(
-          (certification) =>
-            certification.year || certification.name || certification.body,
-        ) || [],
-      educations:
-        config?.educations?.filter(
-          (item) => item.institution || item.degree || item.from || item.to,
-        ) || [],
-      publications: config?.publications?.filter((item) => item.title) || [],
       googleAnalytics: {
         id: config?.googleAnalytics?.id,
       },
@@ -121,15 +83,8 @@ export const getSanitizedConfig = (
         snippetVersion: config?.hotjar?.snippetVersion || 6,
       },
       themeConfig: {
-        defaultTheme: config?.themeConfig?.defaultTheme || DEFAULT_THEMES[0],
-        disableSwitch: config?.themeConfig?.disableSwitch || false,
-        respectPrefersColorScheme:
-          config?.themeConfig?.respectPrefersColorScheme || false,
         displayAvatarRing: config?.themeConfig?.displayAvatarRing ?? true,
-        themes: config?.themeConfig?.themes || DEFAULT_THEMES,
       },
-      footer: config?.footer,
-      enablePWA: config?.enablePWA ?? true,
       lanyard: {
         display: config?.lanyard?.display ?? false,
         userId: config?.lanyard?.userId ?? '',
@@ -139,32 +94,6 @@ export const getSanitizedConfig = (
   } catch (error) {
     return {};
   }
-};
-
-export const getInitialTheme = (themeConfig: SanitizedThemeConfig): string => {
-  if (themeConfig.disableSwitch) {
-    return themeConfig.defaultTheme;
-  }
-
-  if (
-    typeof window !== 'undefined' &&
-    localStorage.getItem(LOCAL_STORAGE_KEY_NAME) !== null
-  ) {
-    const savedTheme = localStorage.getItem(LOCAL_STORAGE_KEY_NAME);
-
-    if (savedTheme && themeConfig.themes.includes(savedTheme)) {
-      return savedTheme;
-    }
-  }
-
-  if (themeConfig.respectPrefersColorScheme && !themeConfig.disableSwitch) {
-    return typeof window !== 'undefined' &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches
-      ? 'dark'
-      : themeConfig.defaultTheme;
-  }
-
-  return themeConfig.defaultTheme;
 };
 
 export const skeleton = ({

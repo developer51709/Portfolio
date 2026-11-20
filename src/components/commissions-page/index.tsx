@@ -114,14 +114,9 @@ const STEPS = [
 interface CommissionsPageProps {
   social: SanitizedSocial;
   discordId?: string;
-  onBack: () => void;
 }
 
-const CommissionsPage = ({
-  social,
-  discordId,
-  onBack,
-}: CommissionsPageProps) => {
+const CommissionsPage = ({ social, discordId }: CommissionsPageProps) => {
   const email = social?.email;
   const discordProfileUrl = discordId
     ? `https://discord.com/users/${discordId}`
@@ -134,13 +129,6 @@ const CommissionsPage = ({
 
   return (
     <div className="max-w-5xl mx-auto">
-      <button
-        onClick={onBack}
-        className="btn btn-ghost btn-sm text-base-content/60 mb-6"
-      >
-        <FaArrowRight className="w-4 h-4 rotate-180" /> Back to portfolio
-      </button>
-
       {/* Header */}
       <div className="text-center mb-10">
         <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/15 border border-primary/30 mb-4">

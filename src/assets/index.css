@@ -62,8 +62,10 @@
   font-weight: 600;
 }
 
-/* Sponsor popup surface: a see-through frosted pane instead of the standard
-   card fill, so the page behind stays visible while the overlay blurs it. */
+/* Frosted popup surface: a see-through pane instead of the standard card
+   fill, so the page behind stays visible while the overlay blurs it. Shared
+   by the sponsor popup and the tech stack detail popups. */
+.popup-glass,
 .sponsor-glass {
   background-color: rgba(16, 16, 20, 0.22);
   border-color: rgba(231, 231, 236, 0.14);
@@ -71,6 +73,34 @@
     0 24px 80px rgba(0, 0, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(38px) saturate(1.7);
+}
+
+/* Popup motion. Tailwind's scale/translate utilities set the individual CSS
+   properties rather than `transform`, so each one has to be named in the
+   transition or it snaps into place while only the fade eases. */
+.popup-surface {
+  transition:
+    opacity 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    scale 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    translate 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.popup-backdrop {
+  transition: opacity 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Closing is a touch quicker and eases in, like the sponsor card. */
+.popup-surface[data-open='false'],
+.popup-backdrop[data-open='false'] {
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 1, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popup-surface,
+  .popup-backdrop {
+    transition: none;
+  }
 }
 
 /* Buttons */

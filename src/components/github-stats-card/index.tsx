@@ -68,7 +68,7 @@ const GithubStatsCard = ({
 
   const tiles: Omit<StatTileProps, 'loading'>[] = [
     {
-      label: 'Repositories',
+      label: 'Public repos',
       value: stats ? stats.publicRepos : null,
       icon: <AiOutlineFolder className="h-6 w-6" />,
     },
@@ -166,11 +166,7 @@ const GithubStatsCard = ({
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i}>
-                  {skeleton({
-                    widthCls: 'w-full',
-                    heightCls: 'h-5',
-                    shape: '',
-                  })}
+                  {skeleton({ widthCls: 'w-full', heightCls: 'h-5' })}
                 </div>
               ))}
             </div>

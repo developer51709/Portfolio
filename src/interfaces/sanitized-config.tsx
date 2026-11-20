@@ -19,27 +19,8 @@ export interface SanitizedGitHubProjects {
   };
 }
 
-export interface SanitizedExternalProject {
-  title: string;
-  description?: string;
-  imageUrl?: string;
-  link: string;
-}
-
-export interface SanitizedExternalProjects {
-  header: string;
-  projects: SanitizedExternalProject[];
-}
-
 export interface SanitizedProjects {
   github: SanitizedGitHubProjects;
-  external: SanitizedExternalProjects;
-}
-
-export interface SanitizedSEO {
-  title?: string;
-  description?: string;
-  imageURL?: string;
 }
 
 export interface SanitizedSocial {
@@ -77,37 +58,6 @@ export interface SanitizedResume {
   fileUrl?: string;
 }
 
-export interface SanitizedExperience {
-  company?: string;
-  position?: string;
-  from: string;
-  to: string;
-  companyLink?: string;
-}
-
-export interface SanitizedCertification {
-  body?: string;
-  name?: string;
-  year?: string;
-  link?: string;
-}
-
-export interface SanitizedEducation {
-  institution?: string;
-  degree?: string;
-  from: string;
-  to: string;
-}
-
-export interface SanitizedPublication {
-  title: string;
-  conferenceName?: string;
-  journalName?: string;
-  authors?: string;
-  link?: string;
-  description?: string;
-}
-
 export interface SanitizedGoogleAnalytics {
   id?: string;
 }
@@ -118,11 +68,7 @@ export interface SanitizedHotjar {
 }
 
 export interface SanitizedThemeConfig {
-  defaultTheme: string;
-  disableSwitch: boolean;
-  respectPrefersColorScheme: boolean;
   displayAvatarRing: boolean;
-  themes: Array<string>;
 }
 
 export interface SanitizedLanyard {
@@ -135,18 +81,10 @@ export interface SanitizedLanyard {
 export interface SanitizedConfig {
   github: SanitizedGithub;
   projects: SanitizedProjects;
-  seo: SanitizedSEO;
   social: SanitizedSocial;
   resume: SanitizedResume;
-  skills: Array<string>;
-  experiences: Array<SanitizedExperience>;
-  educations: Array<SanitizedEducation>;
-  certifications: Array<SanitizedCertification>;
-  publications: Array<SanitizedPublication>;
   googleAnalytics: SanitizedGoogleAnalytics;
   hotjar: SanitizedHotjar;
   themeConfig: SanitizedThemeConfig;
-  footer?: string;
-  enablePWA: boolean;
   lanyard: SanitizedLanyard;
 }
