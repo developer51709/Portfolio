@@ -9,12 +9,18 @@ import {
 export type { SocialProfile, SocialProfileStat };
 
 /**
- * Spotify needs a client secret, and pinterest.com / youtube.com / x.com block
- * cross-origin calls, so those stay on our endpoint; every other platform with
- * public stats is fetched in the browser from the visitor's own IP (see
- * `fetchSocialProfileClient`).
+ * Spotify and Twitch need client credentials, and pinterest.com / youtube.com /
+ * x.com block cross-origin calls, so those stay on our endpoint; every other
+ * platform with public stats is fetched in the browser from the visitor's own
+ * IP (see `fetchSocialProfileClient`).
  */
-const SERVER_STAT_PLATFORMS = new Set(['spotify', 'pinterest', 'youtube', 'x']);
+const SERVER_STAT_PLATFORMS = new Set([
+  'spotify',
+  'twitch',
+  'pinterest',
+  'youtube',
+  'x',
+]);
 
 async function fetchFromServer(
   platform: string,

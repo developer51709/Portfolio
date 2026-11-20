@@ -710,6 +710,128 @@ const SOCIAL_PROFILE_HEADERS = {
   'user-agent': 'portfolio-social-profile',
 };
 
+const SPOTIFY_CRAWLER_HEADERS = {
+  ...HTML_PROFILE_HEADERS,
+  // Spotify renders profile metadata for crawlers; a browser UA only gets the
+  // empty web-player shell.
+  'user-agent': 'Googlebot/2.1 (+http://www.google.com/bot.html)',
+};
+
+/**
+ * Spotify hides profile fields behind a user token, so when the app
+ * credentials are missing or rejected read the prerendered page: display name,
+ * avatar and canonical URL, but no counters.
+ */
+async function fetchSpotifyScrape(handle) {
+  const userId = String(handle).replace(/^@/, '').replace(/\/+$/, '');
+  if (!/^[A-Za-z0-9]+$/.test(userId)) {
+    throw new Error('Invalid Spotify user id');
+  }
+
+  const response = await fetch(
+    `https://open.spotify.com/user/${encodeURIComponent(userId)}`,
+    { headers: SPOTIFY_CRAWLER_HEADERS, redirect: 'follow' },
+  );
+  if (!response.ok) {
+    throw new Error(`Spotify profile HTTP ${response.status}`);
+  }
+
+  const html = await response.text();
+  const displayName = metaContent(html, 'og:title');
+  if (!displayName) throw new Error('Spotify profile payload not found');
+
+  return {
+    platform: 'spotify',
+    displayName,
+    handle: `@${userId}`,
+    avatar: metaContent(html, 'og:image'),
+    bio: '',
+    profileUrl: `https://open.spotify.com/user/${userId}`,
+    stats: [],
+  };
+}
+
+let twitchToken = null;
+
+async function getTwitchToken(clientId, clientSecret) {
+  if (twitchToken && twitchToken.expiresAt > Date.now() + 60_000) {
+    return twitchToken.value;
+  }
+  const response = await fetch(
+    `https://id.twitch.tv/oauth2/token?client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}&grant_type=client_credentials`,
+    { method: 'POST', headers: SOCIAL_PROFILE_HEADERS },
+  );
+  if (!response.ok) return null;
+  const data = await response.json();
+  if (!data.access_token) return null;
+  twitchToken = {
+    value: data.access_token,
+    expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000,
+  };
+  return twitchToken.value;
+}
+
+/**
+ * Twitch Helix with an app access token: the user record carries name, avatar,
+ * bio and lifetime views, and the followers endpoint adds the follower total.
+ */
+async function fetchTwitchProfile(handle, env) {
+  const login = String(handle)
+    .replace(/^@/, '')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+  if (!/^[a-z0-9_]{1,25}$/.test(login)) {
+    throw new Error('Invalid Twitch login');
+  }
+  if (!env.TWITCH_CLIENT_ID || !env.TWITCH_CLIENT_SECRET) {
+    throw new Error('Twitch credentials are not configured');
+  }
+
+  const token = await getTwitchToken(
+    env.TWITCH_CLIENT_ID,
+    env.TWITCH_CLIENT_SECRET,
+  );
+  if (!token) throw new Error('Failed to authenticate with Twitch');
+
+  const headers = {
+    'client-id': env.TWITCH_CLIENT_ID,
+    Authorization: `Bearer ${token}`,
+  };
+  const userResponse = await fetch(
+    `https://api.twitch.tv/helix/users?login=${encodeURIComponent(login)}`,
+    { headers },
+  );
+  if (!userResponse.ok) {
+    throw new Error(`Twitch profile HTTP ${userResponse.status}`);
+  }
+  const userPayload = await userResponse.json();
+  const user = userPayload.data?.[0];
+  if (!user) throw new Error('Twitch channel not found');
+
+  const followersResponse = await fetch(
+    `https://api.twitch.tv/helix/channels/followers?broadcaster_id=${encodeURIComponent(user.id)}&first=1`,
+    { headers },
+  );
+  const followers = followersResponse.ok
+    ? (await followersResponse.json()).total
+    : null;
+
+  return {
+    platform: 'twitch',
+    displayName: user.display_name || user.login,
+    handle: `@${user.login}`,
+    avatar: user.profile_image_url ?? null,
+    bio: user.description ?? '',
+    profileUrl: `https://www.twitch.tv/${user.login}`,
+    stats: [
+      ...(typeof followers === 'number'
+        ? [{ label: 'Followers', value: followers }]
+        : []),
+      { label: 'Views', value: Number(user.view_count ?? 0) },
+    ],
+  };
+}
+
 async function fetchSocialProfile(platform, handle, env) {
   if (platform === 'github') {
     const headers = {
@@ -830,6 +952,10 @@ async function fetchSocialProfile(platform, handle, env) {
     };
   }
 
+  if (platform === 'twitch') {
+    return fetchTwitchProfile(handle, env);
+  }
+
   if (platform === 'x') {
     return fetchXProfile(handle);
   }
@@ -844,13 +970,13 @@ async function fetchSocialProfile(platform, handle, env) {
 
   if (platform === 'spotify') {
     if (!env.SPOTIFY_CLIENT_ID || !env.SPOTIFY_CLIENT_SECRET) {
-      throw new Error('Spotify credentials are not configured');
+      return fetchSpotifyScrape(handle);
     }
     const token = await getSpotifyToken(
       env.SPOTIFY_CLIENT_ID,
       env.SPOTIFY_CLIENT_SECRET,
     );
-    if (!token) throw new Error('Failed to authenticate with Spotify');
+    if (!token) return fetchSpotifyScrape(handle);
 
     const headers = {
       ...SOCIAL_PROFILE_HEADERS,
@@ -866,7 +992,9 @@ async function fetchSocialProfile(platform, handle, env) {
       ),
     ]);
     if (!profileResponse.ok) {
-      throw new Error(`Spotify profile HTTP ${profileResponse.status}`);
+      // The public profile endpoint rejects app tokens, so fall back to the
+      // prerendered page instead of failing the popup.
+      return fetchSpotifyScrape(handle);
     }
     const profile = await profileResponse.json();
     const playlists = playlistsResponse.ok
