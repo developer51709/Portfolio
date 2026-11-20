@@ -1,8 +1,76 @@
-import { Fragment } from 'react';
-import { AiOutlineFork, AiOutlineStar, AiOutlineGithub } from 'react-icons/ai';
-import { MdInsertLink } from 'react-icons/md';
+import { AiOutlineFork, AiOutlineGithub, AiOutlineLink } from 'react-icons/ai';
+import { AiOutlineStar } from 'react-icons/ai';
 import { ga, getLanguageColor, skeleton } from '../../utils';
 import { GithubProject } from '../../interfaces/github-project';
+
+interface GithubProjectCardProps {
+  header: string;
+  githubProjects: GithubProject[];
+  loading: boolean;
+  limit: number;
+  googleAnalyticsId?: string;
+  /** The owner's profile, used by the header link and the empty state. */
+  profileUrl?: string;
+}
+
+const RepoCard = ({
+  project,
+  googleAnalyticsId,
+}: {
+  project: GithubProject;
+  googleAnalyticsId?: string;
+}) => (
+  <a
+    href={project.html_url}
+    target="_blank"
+    rel="noopener noreferrer"
+    onClick={() => {
+      try {
+        if (googleAnalyticsId) {
+          ga.event('Click project', { project: project.name });
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }}
+    className="group glass-surface flex h-full flex-col rounded-[12px] p-4 transition duration-300 ease-out hover:-translate-y-0.5 hover:ring-1 hover:ring-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+  >
+    <div className="flex items-start justify-between gap-2">
+      <span className="truncate text-sm font-semibold text-base-content">
+        {project.name}
+      </span>
+      <AiOutlineLink
+        className="mt-0.5 h-3.5 w-3.5 shrink-0 text-base-content/25 transition-colors group-hover:text-primary"
+        aria-hidden="true"
+      />
+    </div>
+
+    <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-base-content/55">
+      {project.description || 'No description provided.'}
+    </p>
+
+    <div className="mt-auto flex items-center gap-3 pt-3 text-[11px] tabular-nums text-base-content/50">
+      <span className="flex items-center gap-1">
+        <AiOutlineStar className="h-3.5 w-3.5" aria-hidden="true" />
+        {project.stargazers_count}
+      </span>
+      <span className="flex items-center gap-1">
+        <AiOutlineFork className="h-3.5 w-3.5" aria-hidden="true" />
+        {project.forks_count}
+      </span>
+      {project.language && (
+        <span className="ml-auto flex min-w-0 items-center gap-1.5">
+          <span
+            className="h-2 w-2 shrink-0 rounded-full"
+            style={{ backgroundColor: getLanguageColor(project.language) }}
+            aria-hidden="true"
+          />
+          <span className="truncate">{project.language}</span>
+        </span>
+      )}
+    </div>
+  </a>
+);
 
 const GithubProjectCard = ({
   header,
@@ -10,168 +78,70 @@ const GithubProjectCard = ({
   loading,
   limit,
   googleAnalyticsId,
-}: {
-  header: string;
-  githubProjects: GithubProject[];
-  loading: boolean;
-  limit: number;
-  googleAnalyticsId?: string;
-}) => {
-  if (!loading && githubProjects.length === 0) {
-    return;
-  }
-
-  const renderSkeleton = () => {
-    const array = [];
-    for (let index = 0; index < limit; index++) {
-      array.push(
-        <div className="card shadow-md card-sm bg-base-100" key={index}>
-          <div className="flex justify-between flex-col p-8 h-full w-full">
-            <div>
-              <div className="flex items-center">
-                <span>
-                  <h5 className="card-title text-lg">
-                    {skeleton({
-                      widthCls: 'w-32',
-                      heightCls: 'h-8',
-                      className: 'mb-1',
-                    })}
-                  </h5>
-                </span>
-              </div>
-              <div className="mb-5 mt-1">
-                {skeleton({
-                  widthCls: 'w-full',
-                  heightCls: 'h-4',
-                  className: 'mb-2',
-                })}
-                {skeleton({ widthCls: 'w-full', heightCls: 'h-4' })}
-              </div>
-            </div>
-            <div className="flex justify-between">
-              <div className="flex grow">
-                <span className="mr-3 flex items-center">
-                  {skeleton({ widthCls: 'w-12', heightCls: 'h-4' })}
-                </span>
-                <span className="flex items-center">
-                  {skeleton({ widthCls: 'w-12', heightCls: 'h-4' })}
-                </span>
-              </div>
-              <div>
-                <span className="flex items-center">
-                  {skeleton({ widthCls: 'w-12', heightCls: 'h-4' })}
-                </span>
-              </div>
-            </div>
+  profileUrl,
+}: GithubProjectCardProps) => (
+  <div className="card shadow-lg card-sm bg-base-100">
+    <div className="card-body">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-base-content/60">
+            <AiOutlineGithub className="shrink-0 text-sm" aria-hidden="true" />
+            GitHub
           </div>
-        </div>,
-      );
-    }
-
-    return array;
-  };
-
-  const renderProjects = () => {
-    return githubProjects.map((item, index) => (
-      <a
-        className="card shadow-md card-sm bg-base-100 cursor-pointer"
-        href={item.html_url}
-        key={index}
-        onClick={(e) => {
-          e.preventDefault();
-
-          try {
-            if (googleAnalyticsId) {
-              ga.event('Click project', { project: item.name });
-            }
-          } catch (error) {
-            console.error(error);
-          }
-
-          window?.open(item.html_url, '_blank');
-        }}
-      >
-        <div className="flex justify-between flex-col p-8 h-full w-full">
-          <div>
-            <div className="flex items-center truncate">
-              <div className="card-title text-lg tracking-wide flex text-base-content opacity-60">
-                <MdInsertLink className="my-auto" />
-                <span>{item.name}</span>
-              </div>
-            </div>
-            <p className="mb-5 mt-1 text-base-content text-sm">
-              {item.description}
-            </p>
-          </div>
-          <div className="flex justify-between text-sm text-base-content truncate">
-            <div className="flex grow">
-              <span className="mr-3 flex items-center">
-                <AiOutlineStar className="mr-0.5" />
-                <span>{item.stargazers_count}</span>
-              </span>
-              <span className="flex items-center">
-                <AiOutlineFork className="mr-0.5" />
-                <span>{item.forks_count}</span>
-              </span>
-            </div>
-            <div>
-              <span className="flex items-center">
-                <div
-                  className="w-3 h-3 rounded-full mr-1 opacity-60"
-                  style={{ backgroundColor: getLanguageColor(item.language) }}
-                />
-                <span>{item.language}</span>
-              </span>
-            </div>
+          <h2 className="mt-1 truncate text-lg font-bold leading-tight text-base-content">
+            {header}
+          </h2>
+          <div className="mt-0.5 text-xs text-base-content/45">
+            {loading
+              ? skeleton({ widthCls: 'w-40', heightCls: 'h-3' })
+              : `${githubProjects.length} ${
+                  githubProjects.length === 1 ? 'repository' : 'repositories'
+                }`}
           </div>
         </div>
-      </a>
-    ));
-  };
 
-  return (
-    <Fragment>
-      <div className="col-span-1 lg:col-span-2">
-        <div className="card bg-base-200 shadow-xl border border-base-300">
-          <div className="card-body p-8">
-            {/* Enhanced Header Section */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-              <div className="flex items-center space-x-3">
-                {loading ? (
-                  skeleton({
-                    widthCls: 'w-12',
-                    heightCls: 'h-12',
-                    className: 'rounded-xl',
-                  })
-                ) : (
-                  <div className="flex items-center justify-center w-12 h-12 bg-primary/10 rounded-xl">
-                    <AiOutlineGithub className="text-2xl" />
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-base sm:text-lg font-bold text-base-content truncate">
-                    {loading
-                      ? skeleton({ widthCls: 'w-48', heightCls: 'h-8' })
-                      : header}
-                  </h3>
-                  <div className="text-base-content/60 text-xs sm:text-sm mt-1 truncate">
-                    {loading
-                      ? skeleton({ widthCls: 'w-32', heightCls: 'h-4' })
-                      : `Showcasing ${githubProjects.length} featured repositories`}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Projects Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {loading ? renderSkeleton() : renderProjects()}
-            </div>
-          </div>
-        </div>
+        {profileUrl && (
+          <a
+            href={profileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-ghost btn-sm shrink-0 gap-1.5 text-xs text-base-content/55 hover:text-base-content"
+          >
+            <span className="hidden sm:inline">View all</span>
+            <AiOutlineLink className="h-3.5 w-3.5" aria-hidden="true" />
+          </a>
+        )}
       </div>
-    </Fragment>
-  );
-};
+
+      {loading ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {Array.from({ length: limit }).map((_, index) => (
+            <div key={index}>
+              {skeleton({
+                widthCls: 'w-full',
+                heightCls: 'h-[116px]',
+                className: 'rounded-[12px]',
+              })}
+            </div>
+          ))}
+        </div>
+      ) : githubProjects.length === 0 ? (
+        <div className="glass-surface rounded-[12px] px-4 py-6 text-center text-xs text-base-content/50">
+          No public repositories to show yet.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {githubProjects.map((project) => (
+            <RepoCard
+              key={project.html_url}
+              project={project}
+              googleAnalyticsId={googleAnalyticsId}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+);
 
 export default GithubProjectCard;

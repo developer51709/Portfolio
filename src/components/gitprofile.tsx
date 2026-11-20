@@ -288,6 +288,7 @@ const GitProfile = ({ config }: { config: Config }) => {
                     githubProjects={githubProjects}
                     loading={loading}
                     googleAnalyticsId={sanitizedConfig.googleAnalytics.id}
+                    profileUrl={`https://github.com/${sanitizedConfig.github.username}`}
                   />
                 )}
               </div>
