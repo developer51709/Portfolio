@@ -72,7 +72,7 @@ const CONFIG = {
   },
   social: {
     linkedin: '',
-    x: '',
+    x: 'sorenthedev',
     mastodon: '',
     researchGate: '',
     facebook: '',
