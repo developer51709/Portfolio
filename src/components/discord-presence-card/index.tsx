@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { FaSpotify } from 'react-icons/fa';
 import { RiDiscordFill } from 'react-icons/ri';
+import DiscordBadges from '../discord-badges';
 import { useLanyard } from '../../hooks/useLanyard';
 import { DiscordStatus, LanyardActivity } from '../../interfaces/lanyard';
 import { SanitizedLanyard } from '../../interfaces/sanitized-config';
@@ -80,17 +80,32 @@ function getActivities(activities: LanyardActivity[]): LanyardActivity[] {
 }
 
 /** Returns the custom status activity (type 4), if any. */
-function getCustomStatus(activities: LanyardActivity[]): LanyardActivity | null {
+function getCustomStatus(
+  activities: LanyardActivity[],
+): LanyardActivity | null {
   return activities.find((a) => a.type === 4) ?? null;
 }
 
 const ACTIVITY_TYPE_LABELS: Record<number, string> = {
   0: 'Playing',
   1: 'Streaming',
-  2: 'Listening to',
+  2: 'Listening',
   3: 'Watching',
-  5: 'Competing in',
+  5: 'Competing',
 };
+
+/**
+ * Discord's own glyphs for the activity types, drawn in the card head when an
+ * activity sends no art of its own (ported from Niko's `ACTIVITY_TYPE_ICONS`).
+ */
+const ACTIVITY_TYPE_ICONS: Record<number, string> = {
+  0: 'M6.5 6h11a4.5 4.5 0 0 1 4.4 5.4l-1 5A3 3 0 0 1 16 18l-1.5-2h-5L8 18a3 3 0 0 1-4.9-1.6l-1-5A4.5 4.5 0 0 1 6.5 6Zm1 3v2H5.5v2h2v2h2v-2h2v-2h-2V9h-2Zm7 1a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm3 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z',
+  2: 'M4 13a8 8 0 0 1 16 0v4a3 3 0 0 1-3 3h-2v-2h2a1 1 0 0 0 1-1v-4a6 6 0 0 0-12 0v4a1 1 0 0 0 1 1h2v2H7a3 3 0 0 1-3-3v-4Z',
+  3: 'M12 5C6.5 5 2.7 9.2 1 12c1.7 2.8 5.5 7 11 7s9.3-4.2 11-7c-1.7-2.8-5.5-7-11-7Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Z',
+  5: 'M8 2h8v2h4v3a4 4 0 0 1-4 4h-.3A5 5 0 0 1 13 14v3h3v3H8v-3h3v-3a5 5 0 0 1-2.7-3H8a4 4 0 0 1-4-4V4h4V2Zm8 4v3a2 2 0 0 0 2-2V6h-2ZM6 6v1a2 2 0 0 0 2 2V6H6Z',
+};
+
+const STREAMING_ACTIVITY_ICON = 'M3 6h18v10H3V6Zm7 12h4v2h-4v-2Z';
 
 // --- Spotify Progress Bar ---
 
@@ -100,34 +115,33 @@ const SpotifyProgress: React.FC<{ start: number; end: number }> = ({
 }) => {
   const duration = end - start;
   const [elapsed, setElapsed] = useState(() => Date.now() - start);
-  const rafRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     setElapsed(Date.now() - start);
-    rafRef.current = setInterval(() => {
+    tickerRef.current = setInterval(() => {
       setElapsed(Date.now() - start);
     }, 1000);
     return () => {
-      if (rafRef.current) clearInterval(rafRef.current);
+      if (tickerRef.current) clearInterval(tickerRef.current);
     };
   }, [start]);
 
   const progress = Math.min(1, Math.max(0, elapsed / duration));
 
   return (
-    <div className="mt-3 flex items-center gap-2">
-      <span className="text-xs opacity-50 tabular-nums w-8 text-right">
-        {formatMs(elapsed)}
-      </span>
-      <div className="flex-1 h-1 rounded-full bg-base-300 overflow-hidden">
-        <div
-          className="h-full rounded-full bg-primary"
+    <div className="spotify-clock mt-2 flex items-center gap-2 text-xs text-[#b5bac1]">
+      <span>{formatMs(elapsed)}</span>
+      <span
+        className="relative h-1 flex-1 overflow-hidden rounded-full bg-[#4e5058]"
+        aria-hidden="true"
+      >
+        <span
+          className="absolute inset-y-0 left-0 rounded-full bg-[#dbdee1]"
           style={{ width: `${progress * 100}%`, transition: 'width 1s linear' }}
         />
-      </div>
-      <span className="text-xs opacity-50 tabular-nums w-8">
-        {formatMs(duration)}
       </span>
+      <span>{formatMs(duration)}</span>
     </div>
   );
 };
@@ -145,59 +159,92 @@ const ActivityCard: React.FC<{ activity: LanyardActivity }> = ({
     activity.assets?.small_image,
     activity.application_id,
   );
-  const hasImage = !!(largeImg || smallImg);
+  const label = ACTIVITY_TYPE_LABELS[activity.type] ?? 'Playing';
+  const iconPath =
+    activity.type === 1
+      ? STREAMING_ACTIVITY_ICON
+      : (ACTIVITY_TYPE_ICONS[activity.type] ?? ACTIVITY_TYPE_ICONS[0]);
+  // Discord repeats the lines the name already covers, so keep the distinct ones.
+  const secondaryLines = [activity.details, activity.state].filter(
+    (line): line is string => Boolean(line && line !== activity.name),
+  );
 
-  return (
-    <div className="mt-1 p-2 rounded-lg bg-base-200 flex items-start gap-2">
-      {hasImage && (
-        <div className="relative flex-shrink-0 w-12 h-12">
-          {largeImg ? (
+  const card = (
+    <>
+      <div className="flex items-center gap-1.5 text-[13px] font-semibold text-[#dbdee1]">
+        {!largeImg && (
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className="h-[15px] w-[15px] flex-shrink-0 fill-current text-[#b5bac1]"
+          >
+            <path d={iconPath} />
+          </svg>
+        )}
+        <span>{label}</span>
+      </div>
+
+      <div className="mt-2.5 flex items-start gap-2.5">
+        {largeImg && (
+          <div className="relative h-[60px] w-[60px] flex-shrink-0">
             <img
               src={largeImg}
               alt={activity.assets?.large_text ?? activity.name}
               title={activity.assets?.large_text}
-              className="w-12 h-12 rounded-lg object-cover"
+              className="h-[60px] w-[60px] rounded-lg object-cover"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';
               }}
             />
-          ) : (
-            <img
-              src={smallImg}
-              alt={activity.assets?.small_text ?? activity.name}
-              title={activity.assets?.small_text}
-              className="w-12 h-12 rounded-lg object-cover"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
-            />
-          )}
-          {largeImg && smallImg && (
-            <img
-              src={smallImg}
-              alt={activity.assets?.small_text ?? ''}
-              title={activity.assets?.small_text}
-              className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full ring-2 ring-base-200 object-cover"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
-            />
-          )}
-        </div>
-      )}
+            {smallImg && (
+              <img
+                src={smallImg}
+                alt={activity.assets?.small_text ?? ''}
+                title={activity.assets?.small_text}
+                className="absolute -bottom-0.5 -right-0.5 h-[22px] w-[22px] rounded-full border-2 border-[#232428] object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            )}
+          </div>
+        )}
 
-      <div className="min-w-0 flex-1">
-        <div className="text-xs font-semibold text-base-content opacity-80 truncate">
-          {ACTIVITY_TYPE_LABELS[activity.type] ?? 'Playing'} {activity.name}
+        <div className="grid min-w-0 flex-1 gap-0.5">
+          <strong
+            title={activity.name}
+            className="truncate text-sm font-bold leading-snug text-[#f2f3f5]"
+          >
+            {activity.name}
+          </strong>
+          {secondaryLines.map((line) => (
+            <small
+              key={line}
+              title={line}
+              className="truncate text-[13px] leading-snug text-[#b5bac1]"
+            >
+              {line}
+            </small>
+          ))}
         </div>
-        {activity.details && (
-          <div className="text-xs opacity-50 truncate">{activity.details}</div>
-        )}
-        {activity.state && (
-          <div className="text-xs opacity-40 truncate">{activity.state}</div>
-        )}
       </div>
-    </div>
+    </>
+  );
+
+  const className =
+    'mt-1 block rounded-[10px] glass-surface p-3 text-inherit no-underline';
+
+  return activity.url ? (
+    <a
+      href={activity.url}
+      target="_blank"
+      rel="noreferrer"
+      className={`${className} status-card-link`}
+    >
+      {card}
+    </a>
+  ) : (
+    <div className={className}>{card}</div>
   );
 };
 
@@ -208,7 +255,7 @@ const ClanTag: React.FC<{
   badge: string;
   guildId: string;
 }> = ({ tag, badge, guildId }) => (
-  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-base-200 text-base-content text-xs font-semibold opacity-80 leading-none flex-shrink-0">
+  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md glass-surface text-base-content text-xs font-semibold leading-none flex-shrink-0">
     <img
       src={`https://cdn.discordapp.com/clan-badges/${guildId}/${badge}.png?size=16`}
       alt={tag}
@@ -361,7 +408,7 @@ const DiscordPresenceCard: React.FC<Props> = ({ lanyard, loading }) => {
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="font-semibold text-sm text-base-content truncate">
+              <span className="font-semibold text-base text-base-content truncate">
                 {discord_user.global_name || discord_user.username}
               </span>
               {hasClan && (
@@ -373,16 +420,16 @@ const DiscordPresenceCard: React.FC<Props> = ({ lanyard, loading }) => {
               )}
             </div>
 
-            <div className="text-xs opacity-50 truncate">
-              {isStreaming ? 'Streaming' : statusLabel}
-              {active_on_discord_mobile && !isStreaming && ' · Mobile'}
-            </div>
+            <DiscordBadges
+              userId={discord_user.id}
+              publicFlags={discord_user.public_flags}
+            />
           </div>
         </div>
 
         {/* Custom status (type 4) */}
         {customStatus && (customStatus.state || customStatus.emoji) && (
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-base-200 text-xs text-base-content opacity-70">
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg glass-surface text-xs text-base-content/70">
             {customStatus.emoji && (
               <span className="flex-shrink-0 text-sm leading-none">
                 {customStatus.emoji.id ? (
@@ -413,55 +460,53 @@ const DiscordPresenceCard: React.FC<Props> = ({ lanyard, loading }) => {
           <ActivityCard key={activity.id} activity={activity} />
         ))}
 
-        {/* Spotify Section */}
+        {/* Spotify Section — Discord's profile Spotify card, ported from Niko:
+            label + mark on top, 60px art beside title/artist, then the clocked
+            progress row. The whole panel links to the track. */}
         {listening_to_spotify && spotify && (
-          <div className="mt-1 p-3 rounded-xl bg-base-200">
-            {/* Spotify Label */}
-            <div className="flex items-center gap-1 mb-2 text-xs font-semibold opacity-60">
-              <FaSpotify className="text-green-500" />
+          <a
+            href={`https://open.spotify.com/track/${spotify.track_id}`}
+            target="_blank"
+            rel="noreferrer"
+            className="status-card-link mt-1 block rounded-[10px] glass-surface p-3 text-inherit no-underline"
+          >
+            <div className="flex items-center gap-1.5 text-[13px] font-semibold text-[#dbdee1]">
               <span>Listening to Spotify</span>
+              <img
+                src="/assets/spotify.svg"
+                alt=""
+                className="h-[15px] w-[15px]"
+              />
             </div>
 
-            {/* Track Info */}
-            <div className="flex gap-3 items-center">
+            <div className="mt-2.5 flex items-start gap-2.5">
               {spotify.album_art_url && (
-                <a
-                  href={`https://open.spotify.com/track/${spotify.track_id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex-shrink-0"
-                >
-                  <img
-                    src={spotify.album_art_url}
-                    alt={spotify.album}
-                    className="w-14 h-14 rounded-lg object-cover shadow-md hover:opacity-80 transition-opacity"
-                  />
-                </a>
+                <img
+                  src={spotify.album_art_url}
+                  alt={spotify.album}
+                  className="h-[60px] w-[60px] flex-shrink-0 rounded-lg object-cover"
+                />
               )}
-              <div className="flex-1 min-w-0">
-                <a
-                  href={`https://open.spotify.com/track/${spotify.track_id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block font-semibold text-sm text-base-content truncate hover:underline"
+              <div className="grid min-w-0 flex-1 gap-0.5">
+                <strong
+                  title={spotify.song}
+                  className="truncate text-sm font-bold leading-snug text-[#f2f3f5]"
                 >
                   {spotify.song}
-                </a>
-                <div className="text-xs opacity-60 truncate mt-0.5">
+                </strong>
+                <small
+                  title={spotify.artist}
+                  className="truncate text-[13px] leading-snug text-[#b5bac1]"
+                >
                   {spotify.artist}
-                </div>
-                <div className="text-xs opacity-40 truncate">
-                  {spotify.album}
-                </div>
+                </small>
+                <SpotifyProgress
+                  start={spotify.timestamps.start}
+                  end={spotify.timestamps.end}
+                />
               </div>
             </div>
-
-            {/* Animated Progress Bar */}
-            <SpotifyProgress
-              start={spotify.timestamps.start}
-              end={spotify.timestamps.end}
-            />
-          </div>
+          </a>
         )}
       </div>
     </div>

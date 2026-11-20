@@ -179,6 +179,32 @@
   backdrop-filter: blur(18px) saturate(1.5);
 }
 
+/* Inline frosted pane for content nested inside a card (server tag, custom
+   status, activity and Spotify panels). Same translucent grey fill and blur as
+   the cards around it, one step lighter so it reads as a section inside the
+   card rather than a second card. */
+.glass-surface {
+  background-color: rgba(16, 16, 20, 0.3);
+  border: 1px solid rgba(231, 231, 236, 0.1);
+  backdrop-filter: blur(18px) saturate(1.4);
+}
+
+/* Discord clocks the Spotify track in Space Mono, the same face Niko's profile
+   Spotify card uses for its elapsed/total time row. */
+.spotify-clock {
+  font-family: 'Space Mono', ui-monospace, monospace;
+}
+
+/* The whole Spotify panel is a track link, so it lifts a shade on hover like
+   Discord's own card. */
+.status-card-link {
+  transition: background-color 0.18s ease;
+}
+
+.status-card-link:hover {
+  background-color: rgba(35, 36, 40, 0.55);
+}
+
 /* Safari before 18 only understands the prefixed property. The CSS optimizer
    collapses duplicate standard/prefixed declarations, so the prefixed copies
    live in their own @supports block instead of beside the standard ones. */
@@ -186,7 +212,8 @@
   .card {
     -webkit-backdrop-filter: blur(22px) saturate(1.5);
   }
-  .glass-btn {
+  .glass-btn,
+  .glass-surface {
     -webkit-backdrop-filter: blur(18px) saturate(1.5);
   }
   .sponsor-glass {
