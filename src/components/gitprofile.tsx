@@ -16,7 +16,7 @@ import AvatarCard from './avatar-card';
 import { Profile } from '../interfaces/profile';
 import DetailsCard from './details-card';
 import { GithubProject } from '../interfaces/github-project';
-import GithubProjectCard from './github-project-card';
+import ProjectsPage from './projects-page';
 import DiscordPresenceCard from './discord-presence-card';
 import SponsorCard from './sponsor-card';
 import ThreeBackground from './three-background';
@@ -25,6 +25,7 @@ import { useHashRoute } from '../hooks/useHashRoute';
 import { useGithubStats } from '../hooks/useGithubStats';
 import GithubStatsCard from './github-stats-card';
 import TechStack from './tech-stack';
+import AboutCard from './about-card';
 import CommissionsPage from './commissions-page';
 import LegalPage, { PRIVACY_DOC, TERMS_DOC } from './legal-page';
 import { Analytics } from '@vercel/analytics/react';
@@ -263,6 +264,7 @@ const GitProfile = ({ config }: { config: Config }) => {
                   />
                 </div>
                 <div className="lg:col-span-2 grid grid-cols-1 gap-6 content-start">
+                  <AboutCard />
                   <GithubStatsCard
                     stats={statsData?.stats ?? null}
                     techStack={statsData?.techStack ?? null}
@@ -282,7 +284,7 @@ const GitProfile = ({ config }: { config: Config }) => {
             {pageRoute === 'projects' && (
               <div className="grid grid-cols-1 gap-6">
                 {sanitizedConfig.projects.github.display && (
-                  <GithubProjectCard
+                  <ProjectsPage
                     header={sanitizedConfig.projects.github.header}
                     limit={sanitizedConfig.projects.github.automatic.limit}
                     githubProjects={githubProjects}
