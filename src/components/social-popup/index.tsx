@@ -18,9 +18,10 @@ interface SocialPopupProps {
  * contribution day card it grows out of the button it was opened from and
  * shrinks back into it (the shared `usePopupMorph` FLIP).
  *
- * Platforms with a server-side API (GitHub, Spotify, Bluesky, Mastodon, Stack
- * Overflow) also show live stats — avatar, display name, bio and counters.
- * Everything else falls back to the handle the page already knows.
+ * Platforms with a server-side API or scraper (GitHub, Spotify, Bluesky,
+ * Mastodon, Stack Overflow, Twitch, X, YouTube, Pinterest, TikTok) also show
+ * live stats — avatar, display name, bio and counters. Everything else falls
+ * back to the handle the page already knows.
  */
 const SocialPopup = ({ link, origin, onClose }: SocialPopupProps) => {
   const { cardRef, visible, requestClose } = usePopupMorph({ origin, onClose });

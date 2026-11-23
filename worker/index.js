@@ -832,6 +832,77 @@ async function fetchTwitchProfile(handle, env) {
   };
 }
 
+/**
+ * TikTok ships the logged-out profile as rehydration state in
+ * `__UNIVERSAL_DATA_FOR_REHYDRATION__`: `webapp.user-detail.userInfo` holds the
+ * user record (nickname, signature, avatar) plus TikTok's own counters, which
+ * are exact numbers rather than the abbreviated labels the page prints.
+ */
+async function fetchTikTokProfile(handle) {
+  const username = String(handle)
+    .replace(/^@/, '')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+  // TikTok usernames allow letters, digits, underscores and periods.
+  if (!/^[a-z0-9_.]{1,24}$/.test(username)) {
+    throw new Error('Invalid TikTok username');
+  }
+
+  const response = await fetch(
+    `https://www.tiktok.com/@${encodeURIComponent(username)}`,
+    { headers: HTML_PROFILE_HEADERS, redirect: 'follow' },
+  );
+  if (!response.ok) {
+    throw new Error(`TikTok profile HTTP ${response.status}`);
+  }
+
+  const html = await response.text();
+  const match =
+    /<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/.exec(
+      html,
+    );
+  if (!match) throw new Error('TikTok profile payload not found');
+
+  let scope;
+  try {
+    scope = JSON.parse(match[1]).__DEFAULT_SCOPE__;
+  } catch {
+    throw new Error('TikTok profile payload is not valid JSON');
+  }
+
+  const detail = scope?.['webapp.user-detail'];
+  // A missing account still renders the shell, with a non-zero statusCode.
+  if (!detail || (detail.statusCode !== undefined && detail.statusCode !== 0)) {
+    throw new Error('TikTok user not found');
+  }
+
+  const user = detail.userInfo?.user;
+  const stats = detail.userInfo?.stats ?? {};
+  if (!user || typeof user.uniqueId !== 'string') {
+    throw new Error('TikTok user not found');
+  }
+
+  const bio = String(user.signature ?? '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200);
+
+  return {
+    platform: 'tiktok',
+    displayName: String(user.nickname || user.uniqueId),
+    handle: `@${user.uniqueId}`,
+    avatar: typeof user.avatarLarger === 'string' ? user.avatarLarger : null,
+    bio,
+    profileUrl: `https://www.tiktok.com/@${user.uniqueId}`,
+    stats: [
+      { label: 'Followers', value: Number(stats.followerCount ?? 0) },
+      { label: 'Likes', value: Number(stats.heartCount ?? stats.heart ?? 0) },
+      { label: 'Videos', value: Number(stats.videoCount ?? 0) },
+    ],
+  };
+}
+
 async function fetchSocialProfile(platform, handle, env) {
   if (platform === 'github') {
     const headers = {
@@ -966,6 +1037,10 @@ async function fetchSocialProfile(platform, handle, env) {
 
   if (platform === 'pinterest') {
     return fetchPinterestProfile(handle);
+  }
+
+  if (platform === 'tiktok') {
+    return fetchTikTokProfile(handle);
   }
 
   if (platform === 'spotify') {
