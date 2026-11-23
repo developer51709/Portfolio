@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { TechStackEntry } from '../../hooks/useGithubStats';
-import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { usePopupMorph } from '../../hooks/usePopupMorph';
 import { skeleton } from '../../utils';
-import { MdClose, MdInfo, MdOutlineExtension } from 'react-icons/md';
+import { MdClose, MdOutlineExtension } from 'react-icons/md';
 
 /**
  * Builds a skill-icons.dev SVG URL for a list of language/tech short codes.
@@ -96,14 +96,6 @@ const LANGUAGE_DESCRIPTIONS: Record<string, string> = {
 const descriptionFor = (language: string): string =>
   LANGUAGE_DESCRIPTIONS[language] ?? 'Used across my repositories.';
 
-// Slightly longer than the 200ms close transition so the fade finishes before
-// the popup unmounts (the transition starts a frame after the state change).
-const CLOSE_MS = 320;
-
-const prefersReducedMotion = (): boolean =>
-  typeof window !== 'undefined' &&
-  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
 /**
  * Language icon. Loads the skill-icons SVG and swaps to a themed fallback
  * glyph if that language has no icon available (404 / parse failure).
@@ -143,74 +135,31 @@ const LanguageIcon = ({
 
 interface TechDetailPopupProps {
   entry: TechStackEntry;
+  /** The icon button the popup grows out of and shrinks back into. */
+  origin: HTMLElement | null;
   onClose: () => void;
 }
 
 /**
- * Detail popup for one language. Rendered in a portal on document.body so the
- * fixed overlay is positioned against the viewport — the Tech Stack card's
- * backdrop-filter would otherwise become its containing block.
+ * Detail popup for one language. Like the sponsor, social and contribution
+ * popups it grows out of the element it was opened from and shrinks back into
+ * it (the shared `usePopupMorph` FLIP), with the same backdrop and content
+ * cross-fade. Rendered in a portal on document.body so the fixed overlay is
+ * positioned against the viewport — the Tech Stack card's backdrop-filter
+ * would otherwise become its containing block.
  */
-const TechDetailPopup = ({ entry, onClose }: TechDetailPopupProps) => {
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
-  const closeTimer = useRef<number | null>(null);
+const TechDetailPopup = ({ entry, origin, onClose }: TechDetailPopupProps) => {
+  const { cardRef, visible, requestClose } = usePopupMorph({
+    origin,
+    // The trigger is a rounded-lg tile, not a pill.
+    originRadius: '0.5rem',
+    onClose,
+  });
 
-  useBodyScrollLock();
-
-  // Mount hidden, then flip to the open state on the next frame so the
-  // transition runs instead of the popup snapping into place.
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => setVisible(true));
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (closeTimer.current !== null) {
-        window.clearTimeout(closeTimer.current);
-      }
-    };
-  }, []);
-
-  // Play the same fade/scale in reverse before unmounting, so closing is as
-  // smooth as opening instead of the card vanishing between frames.
-  const requestClose = useCallback(() => {
-    if (closeTimer.current !== null) {
-      return;
-    }
-    if (prefersReducedMotion()) {
-      onClose();
-      return;
-    }
-
-    setVisible(false);
-    closeTimer.current = window.setTimeout(onClose, CLOSE_MS);
-  }, [onClose]);
-
-  const closeRef = useRef(requestClose);
-  useEffect(() => {
-    closeRef.current = requestClose;
-  }, [requestClose]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        closeRef.current();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown);
-    cardRef.current?.focus({ preventScroll: true });
-
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6">
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center sm:p-6">
       <div
-        data-open={visible}
-        className={`popup-backdrop absolute inset-0 bg-base-300/45 backdrop-blur-md ${
+        className={`absolute inset-0 bg-base-300/45 backdrop-blur-md transition-opacity duration-300 ease-out ${
           visible ? 'opacity-100' : 'opacity-0'
         }`}
         onClick={requestClose}
@@ -223,14 +172,15 @@ const TechDetailPopup = ({ entry, onClose }: TechDetailPopupProps) => {
         aria-modal="true"
         aria-labelledby="tech-detail-title"
         tabIndex={-1}
-        data-open={visible}
-        className={`popup-glass card popup-surface relative w-full max-w-md border shadow-2xl outline-none ${
-          visible
-            ? 'translate-y-0 scale-100 opacity-100'
-            : 'translate-y-2 scale-[0.96] opacity-0'
-        }`}
+        className="card popup-glass relative z-10 w-full overflow-hidden rounded-t-3xl p-5 outline-none sm:max-w-md sm:rounded-[var(--radius-box)] sm:p-6"
       >
-        <div className="p-5 sm:p-6">
+        <div
+          className={`transition-all duration-300 ease-out ${
+            visible
+              ? 'translate-y-0 opacity-100 delay-100'
+              : 'translate-y-2 opacity-0'
+          }`}
+        >
           <div className="flex items-start gap-3 sm:gap-4">
             <LanguageIcon language={entry.language} size="h-14 w-14 shrink-0" />
             <div className="min-w-0 flex-1">
@@ -282,7 +232,8 @@ const TechDetailPopup = ({ entry, onClose }: TechDetailPopupProps) => {
           </p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 
@@ -292,7 +243,11 @@ interface TechStackProps {
 }
 
 const TechStack = ({ techStack, loading }: TechStackProps) => {
-  const [active, setActive] = useState<TechStackEntry | null>(null);
+  // The tapped icon travels with the entry so the popup can morph out of it.
+  const [active, setActive] = useState<{
+    entry: TechStackEntry;
+    origin: HTMLElement;
+  } | null>(null);
 
   const renderSkeleton = () => (
     <div className="grid grid-cols-6 xs:grid-cols-6 sm:grid-cols-8 gap-3 max-w-md">
@@ -310,20 +265,28 @@ const TechStack = ({ techStack, loading }: TechStackProps) => {
 
   return (
     <div className="card bg-base-200 shadow-xl border border-base-300 mt-6">
-      <div className="card-body p-5 sm:p-8">
-        <div className="flex items-center gap-3 mb-4 sm:mb-6">
-          <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-xl flex-shrink-0">
-            <MdInfo className="text-xl sm:text-2xl" />
-          </div>
+      <div className="card-body">
+        {/* Header — the same icon + uppercase micro label as the GitHub stats
+            and Discord presence cards. */}
+        <div className="mb-4 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="text-base sm:text-lg font-bold text-base-content">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-base-content/60">
+              <MdOutlineExtension
+                className="shrink-0 text-sm"
+                aria-hidden="true"
+              />
               Tech Stack
-            </h3>
-            <div className="text-base-content/60 text-xs sm:text-sm mt-1">
+            </div>
+            <p className="mt-1.5 text-xs text-base-content/45">
               Auto-generated from my GitHub repositories — tap an icon for
               details
-            </div>
+            </p>
           </div>
+          {!loading && techStack && techStack.length > 0 && (
+            <span className="shrink-0 text-xs text-base-content/45">
+              {techStack.length} technologies
+            </span>
+          )}
         </div>
 
         {loading || !techStack ? (
@@ -336,7 +299,9 @@ const TechStack = ({ techStack, loading }: TechStackProps) => {
                 <button
                   key={entry.language}
                   type="button"
-                  onClick={() => setActive(entry)}
+                  onClick={(event) =>
+                    setActive({ entry, origin: event.currentTarget })
+                  }
                   aria-haspopup="dialog"
                   title={`${entry.language} — view details`}
                   className="aspect-square w-full rounded-lg transition-transform hover:scale-110 focus:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -349,14 +314,13 @@ const TechStack = ({ techStack, loading }: TechStackProps) => {
               ))}
             </div>
 
-            {active &&
-              createPortal(
-                <TechDetailPopup
-                  entry={active}
-                  onClose={() => setActive(null)}
-                />,
-                document.body,
-              )}
+            {active && (
+              <TechDetailPopup
+                entry={active.entry}
+                origin={active.origin}
+                onClose={() => setActive(null)}
+              />
+            )}
           </>
         )}
       </div>
