@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import AvatarCard from '../avatar-card';
 import DiscordBadges from '../discord-badges';
+import DiscordMarkdown from '../discord-markdown';
 import { useDiscordProfile } from '../../hooks/useDiscordProfile';
 import { useLanyard } from '../../hooks/useLanyard';
 import {
@@ -542,6 +543,9 @@ const DiscordProfileCard: React.FC<Props> = ({
   const statusTitle = isStreaming ? 'Streaming' : statusLabel;
   const mainActivities = getActivities(activities);
   const customStatus = getCustomStatus(activities);
+  // Lanyard's KV store, written with `/kv set bio …` in the Lanyard Discord
+  // server, so the bio is edited without a deploy or a backend.
+  const bio = presence.kv?.bio?.trim();
 
   const displayName = discord_user.global_name || discord_user.username;
   const avatarUrl = discord_user.avatar
@@ -645,6 +649,15 @@ const DiscordProfileCard: React.FC<Props> = ({
           userId={discord_user.id}
           publicFlags={discord_user.public_flags}
         />
+
+        {/* About Me — the Lanyard `bio` value, rendered the way Discord shows
+            it, custom emoji and fenced code included. */}
+        {bio && (
+          <section className="discord-profile-about">
+            <h3>About Me</h3>
+            <DiscordMarkdown text={bio} />
+          </section>
+        )}
 
         {/* Non-Spotify Activities — all of them, in order */}
         {mainActivities.map((activity) => (

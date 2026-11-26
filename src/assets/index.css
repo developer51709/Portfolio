@@ -711,3 +711,308 @@ svg {
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Discord markdown — the About Me bio
+ * A port of the Niko bots website's `DiscordMarkdown` renderer, so a bio set
+ * with Lanyard's `/kv set bio …` command reads as it does in Discord: its own
+ * inline formatting, custom emoji, quotes, subtext, tables and highlighted
+ * fenced code panels. Colours are Discord's, matching the rest of the card.
+ * ------------------------------------------------------------------------- */
+
+.discord-profile-about {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #3f4147;
+}
+
+.discord-profile-about h3 {
+  margin-bottom: 5px;
+  color: #b5bac1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.discord-markdown {
+  min-width: 0;
+  color: #dbdee1;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.discord-markdown .discord-md-heading {
+  margin: 8px 0 4px;
+  color: #f2f3f5;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.discord-markdown h1.discord-md-heading {
+  font-size: 1.35em;
+}
+
+.discord-markdown h2.discord-md-heading {
+  font-size: 1.2em;
+}
+
+.discord-markdown h3.discord-md-heading {
+  font-size: 1.08em;
+}
+
+.discord-markdown h4.discord-md-heading {
+  font-size: 1em;
+}
+
+/* Discord's fenced block: one flat panel with a hairline edge and a 4px corner.
+   There is no language header — the identifier after the opening fence only
+   chooses the highlighting, it is never printed. */
+.discord-md-codeblock {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin: 8px 0;
+  overflow: hidden;
+  background: #2b2d31;
+  border: 1px solid #1e1f22;
+  border-radius: 4px;
+}
+
+.discord-md-block-code {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 8px;
+  overflow-x: auto;
+  color: #dbdee1;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font:
+    0.875em/1.3 Consolas,
+    'Andale Mono WT',
+    'Andale Mono',
+    'Lucida Console',
+    'Lucida Sans Typewriter',
+    'DejaVu Sans Mono',
+    'Bitstream Vera Sans Mono',
+    'Liberation Mono',
+    'Nimbus Mono L',
+    Monaco,
+    'Courier New',
+    Courier,
+    monospace;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+  tab-size: 4;
+}
+
+.discord-md-block-code code {
+  font: inherit;
+}
+
+.discord-code-token {
+  font: inherit;
+}
+
+/* Discord highlights fenced blocks with a Solarized-derived theme: green
+   keywords, cyan strings, numbers and literals, blue functions and tags, gold
+   attributes, and grey comments without italics. */
+.discord-code-keyword,
+.discord-code-control {
+  color: #859900;
+}
+
+.discord-code-string,
+.discord-code-number,
+.discord-code-constant {
+  color: #2aa198;
+}
+
+.discord-code-comment {
+  color: #586e75;
+}
+
+.discord-code-function,
+.discord-code-tag {
+  color: #268bd2;
+}
+
+.discord-code-property {
+  color: #b58900;
+}
+
+.discord-code-operator {
+  color: inherit;
+}
+
+.discord-code-token.is-added {
+  color: #859900;
+}
+
+.discord-code-token.is-removed {
+  color: #dc322f;
+}
+
+.discord-code-token.is-hunk {
+  color: #268bd2;
+}
+
+.discord-markdown .discord-md-code {
+  padding: 0 5px;
+  color: #f2f3f5;
+  background: #202226;
+  border: 1px solid #34383f;
+  border-radius: 4px;
+  font: 0.92em monospace;
+}
+
+.discord-markdown .discord-md-link {
+  color: #00a8fc;
+  text-decoration: none;
+}
+
+.discord-markdown .discord-md-link:hover {
+  text-decoration: underline;
+}
+
+/* A code span used as link text keeps its box but wears the link colour. */
+.discord-markdown .discord-md-link .discord-md-code {
+  color: inherit;
+}
+
+.discord-markdown .discord-md-emoji {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  vertical-align: -0.35em;
+}
+
+.discord-markdown .discord-emoji-fallback {
+  color: inherit;
+}
+
+.discord-markdown .discord-md-mention {
+  display: inline;
+  padding: 1px 4px;
+  color: #dce4ff;
+  background: rgba(88, 101, 242, 0.3);
+  border: 0;
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.discord-markdown .discord-md-timestamp {
+  display: inline-block;
+  padding: 0 4px;
+  color: #b5bac1;
+  background: rgba(79, 84, 92, 0.48);
+  border-radius: 3px;
+  font-size: 0.92em;
+}
+
+.discord-markdown .discord-md-quote {
+  position: relative;
+  margin: 2px 0;
+  padding-left: 12px;
+  color: #b5bac1;
+  border-left: 0;
+}
+
+.discord-markdown .discord-md-quote::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 4px;
+  background: #4e5058;
+  border-radius: 4px;
+  content: '';
+}
+
+.discord-markdown .discord-md-subtext {
+  display: inline-block;
+  width: 100%;
+  color: #949ba4;
+  font-size: 0.86em;
+}
+
+.discord-markdown .discord-md-task {
+  display: inline;
+}
+
+.discord-markdown .discord-md-spoiler {
+  margin: 0 -2px;
+  padding: 0 2px;
+  border-radius: 4px;
+  background: #202225;
+  cursor: pointer;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.discord-markdown .discord-md-spoiler:not(.is-revealed) {
+  color: transparent;
+}
+
+.discord-markdown .discord-md-spoiler:not(.is-revealed) > * {
+  visibility: hidden;
+}
+
+.discord-markdown .discord-md-spoiler:not(.is-revealed) a {
+  pointer-events: none;
+}
+
+.discord-markdown .discord-md-spoiler.is-revealed {
+  background: transparent;
+  cursor: auto;
+}
+
+.discord-markdown .discord-md-spoiler:focus-visible {
+  outline: 2px solid #00a8fc;
+  outline-offset: 2px;
+}
+
+.discord-markdown .discord-md-table-wrap {
+  max-width: 100%;
+  margin: 8px 0;
+  overflow-x: auto;
+  border: 1px solid #3f4147;
+  border-radius: 7px;
+}
+
+.discord-markdown .discord-md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.discord-markdown .discord-md-table th,
+.discord-markdown .discord-md-table td {
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #3f4147;
+}
+
+.discord-markdown .discord-md-table th {
+  color: #f2f3f5;
+  background: #2b2d31;
+  font-weight: 700;
+}
+
+.discord-markdown .discord-md-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.discord-markdown .discord-md-table tbody tr:nth-child(even) td {
+  background: #232428;
+}
