@@ -27,6 +27,13 @@ const ThreeBackground = () => {
     let W = 0;
     let H = 0;
     let dpr = 1;
+
+    // Animation clock, in seconds. Advancing it by the real frame delta (and
+    // clamping the delta) means a tab that sat in the background picks the
+    // scene up where it left off instead of fast-forwarding on the way back.
+    let elapsed = 0;
+    let lastFrame = 0;
+
     const resize = () => {
       dpr = Math.min(window.devicePixelRatio, 2);
       W = window.innerWidth;
@@ -34,9 +41,10 @@ const ThreeBackground = () => {
       canvas.width = W * dpr;
       canvas.height = H * dpr;
       gl.viewport(0, 0, canvas.width, canvas.height);
+      // Resizing clears the drawing buffer, so repaint when the loop is not
+      // the thing that is about to redraw it.
+      if (!running && scene && !gl.isContextLost()) paint(elapsed);
     };
-    window.addEventListener('resize', resize);
-    resize();
 
     const VS = `
       attribute vec2 a_pos;
@@ -229,27 +237,52 @@ const ThreeBackground = () => {
       return s;
     };
 
-    const vs = createShader(VS, gl.VERTEX_SHADER);
-    const fs = createShader(FS, gl.FRAGMENT_SHADER);
-    if (!vs || !fs) return;
-    const prog = gl.createProgram();
-    if (!prog) return;
-    gl.attachShader(prog, vs);
-    gl.attachShader(prog, fs);
-    gl.linkProgram(prog);
-    gl.useProgram(prog);
-
     const quad = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
-    const buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
-    const aPos = gl.getAttribLocation(prog, 'a_pos');
-    gl.enableVertexAttribArray(aPos);
-    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
 
-    const uRes = gl.getUniformLocation(prog, 'u_res');
-    const uTime = gl.getUniformLocation(prog, 'u_time');
-    const uMouse = gl.getUniformLocation(prog, 'u_mouse');
+    // Everything the GPU owns lives in this object so it can be thrown away and
+    // rebuilt from scratch after the browser takes the context away and hands
+    // it back.
+    type Scene = {
+      program: WebGLProgram;
+      buffer: WebGLBuffer;
+      uRes: WebGLUniformLocation | null;
+      uTime: WebGLUniformLocation | null;
+      uMouse: WebGLUniformLocation | null;
+    };
+    let scene: Scene | null = null;
+
+    const buildScene = (): boolean => {
+      if (gl.isContextLost()) return false;
+      const vs = createShader(VS, gl.VERTEX_SHADER);
+      const fs = createShader(FS, gl.FRAGMENT_SHADER);
+      if (!vs || !fs) return false;
+      const program = gl.createProgram();
+      if (!program) return false;
+      gl.attachShader(program, vs);
+      gl.attachShader(program, fs);
+      gl.linkProgram(program);
+      gl.deleteShader(vs);
+      gl.deleteShader(fs);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return false;
+      gl.useProgram(program);
+
+      const buffer = gl.createBuffer();
+      if (!buffer) return false;
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+      const aPos = gl.getAttribLocation(program, 'a_pos');
+      gl.enableVertexAttribArray(aPos);
+      gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+      scene = {
+        program,
+        buffer,
+        uRes: gl.getUniformLocation(program, 'u_res'),
+        uTime: gl.getUniformLocation(program, 'u_time'),
+        uMouse: gl.getUniformLocation(program, 'u_mouse'),
+      };
+      return true;
+    };
 
     let mx = 0.5;
     let my = 0.5;
@@ -262,51 +295,112 @@ const ThreeBackground = () => {
     document.addEventListener('mousemove', onMouseMove);
 
     let raf = 0;
-    let running = true;
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let running = false;
+    const reducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
+
+    const paint = (seconds: number) => {
+      if (!scene) return;
+      gl.uniform2f(scene.uRes, canvas.width, canvas.height);
+      gl.uniform1f(scene.uTime, seconds);
+      gl.uniform2f(scene.uMouse, smx, smy);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    };
+
+    const stop = () => {
+      running = false;
+      cancelAnimationFrame(raf);
+    };
 
     const frame = (t: number) => {
       if (!running) return;
-      t *= 0.001;
+      // A lost context swallows every draw, so stop instead of spinning on
+      // empty frames until the browser hands the context back.
+      if (gl.isContextLost()) {
+        stop();
+        return;
+      }
+      if (lastFrame) elapsed += Math.min(t - lastFrame, 64) * 0.001;
+      lastFrame = t;
+
       smx += (mx - smx) * 0.04;
       smy += (my - smy) * 0.04;
-
-      gl.uniform2f(uRes, canvas.width, canvas.height);
-      gl.uniform1f(uTime, t);
-      gl.uniform2f(uMouse, smx, smy);
-
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      paint(elapsed);
       raf = requestAnimationFrame(frame);
     };
 
-    if (reducedMotion) {
-      // Render a single static frame.
-      gl.uniform2f(uRes, canvas.width, canvas.height);
-      gl.uniform1f(uTime, 0);
-      gl.uniform2f(uMouse, 0.5, 0.5);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    } else {
+    const start = () => {
+      if (running || reducedMotion || document.hidden || gl.isContextLost()) {
+        return;
+      }
+      running = true;
+      lastFrame = 0;
       raf = requestAnimationFrame(frame);
-    }
+    };
+
+    // Chrome, Edge and Safari can take the WebGL context away from a tab that
+    // sat in the background (GPU memory pressure, a GPU process or driver
+    // reset). The page keeps the canvas, but every draw after that goes
+    // nowhere and the opaque canvas is left painting the browser's blank white
+    // surface behind the site. preventDefault asks for the context back, and
+    // the restore event rebuilds the scene on it.
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      stop();
+      scene = null;
+    };
+
+    const onContextRestored = () => {
+      resize();
+      if (!buildScene()) return;
+      if (reducedMotion || document.hidden) {
+        paint(elapsed);
+      } else {
+        start();
+      }
+    };
 
     const onVisibility = () => {
       if (document.hidden) {
-        running = false;
-        cancelAnimationFrame(raf);
-      } else if (!reducedMotion) {
-        running = true;
-        raf = requestAnimationFrame(frame);
+        stop();
+        return;
+      }
+      if (gl.isContextLost()) return; // webglcontextrestored resumes it
+      if (!scene && !buildScene()) return;
+      if (reducedMotion) {
+        paint(elapsed);
+      } else {
+        start();
       }
     };
+
+    window.addEventListener('resize', resize);
+    canvas.addEventListener('webglcontextlost', onContextLost);
+    canvas.addEventListener('webglcontextrestored', onContextRestored);
     document.addEventListener('visibilitychange', onVisibility);
 
+    resize();
+    if (buildScene()) {
+      if (reducedMotion) {
+        paint(0); // reduced motion: one static frame, no loop
+      } else {
+        start();
+      }
+    }
+
     return () => {
-      running = false;
-      cancelAnimationFrame(raf);
+      stop();
       window.removeEventListener('resize', resize);
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('visibilitychange', onVisibility);
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
+      canvas.removeEventListener('webglcontextlost', onContextLost);
+      canvas.removeEventListener('webglcontextrestored', onContextRestored);
+      if (scene && !gl.isContextLost()) {
+        gl.deleteProgram(scene.program);
+        gl.deleteBuffer(scene.buffer);
+      }
+      scene = null;
     };
   }, []);
 
@@ -314,7 +408,7 @@ const ThreeBackground = () => {
     <canvas
       ref={canvasRef}
       aria-hidden
-      className="fixed inset-0 w-full h-full z-0 pointer-events-none"
+      className="three-background fixed inset-0 w-full h-full z-0 pointer-events-none"
     />
   );
 };

@@ -656,6 +656,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Base tone of the WebGL sky. The canvas paints over it as soon as the first
+   frame lands; if the GPU context is lost or still warming up there is a night
+   sky behind the cards rather than the browser's white surface. */
+.three-background {
+  background-color: #04030b;
+}
+
 code {
   font-family:
     source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
