@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import AvatarCard from '../avatar-card';
 import DiscordBadges from '../discord-badges';
 import DiscordMarkdown from '../discord-markdown';
@@ -443,17 +443,36 @@ const ClanTag: React.FC<{
 
 // --- Skeleton ---
 
+/** Four of the 24px squares the badge row is made of. */
+const skeletonBadges = [0, 1, 2, 3].map((index) => (
+  <Fragment key={index}>
+    {skeleton({ widthCls: 'w-6', heightCls: 'h-6', shape: 'rounded-md' })}
+  </Fragment>
+));
+
+/**
+ * The loading card mirrors the card it stands in for, element for element: the
+ * same 104px banner, the avatar seated in its notch, the custom-status bubble
+ * beside the avatar, the name and username, the badge row, the About Me block
+ * and an activity panel.
+ *
+ * The banner wears the real card's notch mask instead of letting the avatar be
+ * painted on top of it. Every shape pulses on its own clock, so two shapes
+ * stacked on each other read darker than the rest of the skeleton; the mask
+ * keeps the banner clear of the avatar, and no two shapes share a pixel.
+ */
 const ProfileSkeleton: React.FC = () => (
-  <div className="card shadow-lg card-sm bg-base-100 overflow-hidden">
-    <div className="h-[104px] w-full">
+  <div className="discord-profile-card card shadow-lg card-sm bg-base-100 overflow-hidden">
+    <div className="discord-profile-banner relative w-full">
       {skeleton({
         widthCls: 'w-full',
         heightCls: 'h-full',
         shape: 'rounded-none',
       })}
     </div>
+
     <div className="px-5 pb-5">
-      <div className="flex items-end gap-3">
+      <div className="flex items-start gap-3">
         <div className="relative h-9 w-[72px] flex-shrink-0">
           <div className="absolute left-0 -top-9">
             {skeleton({
@@ -465,15 +484,55 @@ const ProfileSkeleton: React.FC = () => (
         </div>
         <div className="min-w-0 flex-1">
           {skeleton({
-            widthCls: 'w-full',
+            widthCls: 'w-2/3',
             heightCls: 'h-[58px]',
             shape: 'rounded-[10px]',
           })}
         </div>
       </div>
+
       <div className="mt-2.5 flex flex-col gap-1.5">
-        {skeleton({ widthCls: 'w-32', heightCls: 'h-5', shape: 'rounded' })}
-        {skeleton({ widthCls: 'w-20', heightCls: 'h-3', shape: 'rounded' })}
+        {skeleton({
+          widthCls: 'w-36',
+          heightCls: 'h-[22px]',
+          shape: 'rounded-md',
+        })}
+        {skeleton({ widthCls: 'w-24', heightCls: 'h-3', shape: 'rounded' })}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-1">
+        {skeletonBadges}
+      </div>
+
+      <section className="discord-profile-about">
+        {skeleton({ widthCls: 'w-14', heightCls: 'h-2.5', shape: 'rounded' })}
+        <div className="mt-2 flex flex-col gap-1.5">
+          {skeleton({ widthCls: 'w-full', heightCls: 'h-3', shape: 'rounded' })}
+          {skeleton({ widthCls: 'w-7/12', heightCls: 'h-3', shape: 'rounded' })}
+        </div>
+      </section>
+
+      <div className="mt-1 rounded-[10px] glass-surface p-3">
+        {skeleton({ widthCls: 'w-24', heightCls: 'h-3', shape: 'rounded' })}
+        <div className="mt-2.5 flex items-start gap-2.5">
+          {skeleton({
+            widthCls: 'w-[60px]',
+            heightCls: 'h-[60px]',
+            shape: 'rounded-lg',
+          })}
+          <div className="grid min-w-0 flex-1 gap-1.5">
+            {skeleton({
+              widthCls: 'w-3/4',
+              heightCls: 'h-3.5',
+              shape: 'rounded',
+            })}
+            {skeleton({
+              widthCls: 'w-1/2',
+              heightCls: 'h-3',
+              shape: 'rounded',
+            })}
+          </div>
+        </div>
       </div>
     </div>
   </div>
