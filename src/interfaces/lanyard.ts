@@ -72,6 +72,12 @@ export interface LanyardDiscordUser {
   username: string;
   /** Avatar decoration data, present when user has an active decoration */
   avatar_decoration_data?: LanyardAvatarDecoration | null;
+  /** Nitro name styling: two 24-bit colours, a font and an effect. */
+  display_name_styles?: {
+    colors?: number[];
+    font_id?: number;
+    effect_id?: number;
+  } | null;
   /** Clan / guild tag data */
   primary_guild?: LanyardClan | null;
 }

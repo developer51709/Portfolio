@@ -14,8 +14,12 @@ const REST_POLL_INTERVAL = 30_000; // 30s polling fallback when WebSocket is una
  * NOTE: The Discord user must be a member of the Lanyard server (discord.gg/lanyard)
  * for their presence data to be tracked.
  */
-export function useLanyard(userId: string | undefined): LanyardData | null {
+export function useLanyard(userId: string | undefined): {
+  presence: LanyardData | null;
+  loading: boolean;
+} {
   const [presence, setPresence] = useState<LanyardData | null>(null);
+  const [loading, setLoading] = useState<boolean>(Boolean(userId));
   const wsRef = useRef<WebSocket | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -26,6 +30,8 @@ export function useLanyard(userId: string | undefined): LanyardData | null {
   useEffect(() => {
     mountedRef.current = true;
     wsAliveRef.current = false;
+    setPresence(null);
+    setLoading(Boolean(userId));
     if (!userId) return;
 
     const fetchRest = () =>
@@ -34,7 +40,14 @@ export function useLanyard(userId: string | undefined): LanyardData | null {
         .then((json) => {
           if (json.success && mountedRef.current) setPresence(json.data);
         })
-        .catch(() => {/* silently ignore REST errors */});
+        .catch(() => {
+          /* silently ignore REST errors */
+        })
+        // Either way the first answer settles it: no presence to show, or one
+        // to show, never an open-ended skeleton.
+        .finally(() => {
+          if (mountedRef.current) setLoading(false);
+        });
 
     // Immediate snapshot via REST so the card renders right away
     fetchRest();
@@ -68,6 +81,7 @@ export function useLanyard(userId: string | undefined): LanyardData | null {
           case 0: // Event — update presence on init or update
             if (t === 'INIT_STATE' || t === 'PRESENCE_UPDATE') {
               setPresence(d as LanyardData);
+              setLoading(false);
             }
             break;
         }
@@ -96,5 +110,5 @@ export function useLanyard(userId: string | undefined): LanyardData | null {
     };
   }, [userId]);
 
-  return presence;
+  return { presence, loading };
 }

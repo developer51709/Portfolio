@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom';
 import { profileBadges } from '../../data/profileBadges';
 
 /**
- * The badge row on the Discord presence card, ported from the Niko profile
+ * The badge row on the Discord profile card, ported from the Niko profile
  * popups: Discord draws a badge as a small square of art, and clicking one
  * opens a card with that art on the left and the badge's name and description
  * on the right.

@@ -74,8 +74,6 @@ export interface SanitizedThemeConfig {
 export interface SanitizedLanyard {
   display: boolean;
   userId: string;
-  /** Show the nameplate banner behind the user info row. Defaults to true. */
-  showNameplate: boolean;
 }
 
 export interface SanitizedConfig {

@@ -12,12 +12,11 @@ import '../assets/index.css';
 import { getSanitizedConfig, setupHotjar } from '../utils';
 import { SanitizedConfig } from '../interfaces/sanitized-config';
 import ErrorPage from './error-page';
-import AvatarCard from './avatar-card';
+import DiscordProfileCard from './discord-profile-card';
 import { Profile } from '../interfaces/profile';
 import DetailsCard from './details-card';
 import { GithubProject } from '../interfaces/github-project';
 import ProjectsPage from './projects-page';
-import DiscordPresenceCard from './discord-presence-card';
 import SponsorCard from './sponsor-card';
 import ThreeBackground from './three-background';
 import PageLayout, { PageRoute, SponsorButton } from './page-layout';
@@ -246,15 +245,12 @@ const GitProfile = ({ config }: { config: Config }) => {
             {pageRoute === '' && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="col-span-1 grid grid-cols-1 gap-6 content-start">
-                  <AvatarCard
+                  <DiscordProfileCard
                     profile={profile}
                     loading={loading}
                     avatarRing={sanitizedConfig.themeConfig.displayAvatarRing}
                     resumeFileUrl={sanitizedConfig.resume.fileUrl}
-                  />
-                  <DiscordPresenceCard
                     lanyard={sanitizedConfig.lanyard}
-                    loading={loading}
                   />
                   <DetailsCard
                     profile={profile}

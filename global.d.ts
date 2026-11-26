@@ -345,14 +345,6 @@ interface Lanyard {
    * The user must be a member of discord.gg/lanyard for their presence to be tracked.
    */
   userId?: string;
-
-  /**
-   * Show a decorative nameplate banner behind the user info row.
-   * Uses the user's Discord banner color when available, otherwise falls back to a
-   * subtle themed gradient. Set to false to hide the nameplate entirely.
-   * @default true
-   */
-  showNameplate?: boolean;
 }
 
 interface Config {

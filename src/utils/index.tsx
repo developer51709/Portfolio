@@ -88,7 +88,6 @@ export const getSanitizedConfig = (
       lanyard: {
         display: config?.lanyard?.display ?? false,
         userId: config?.lanyard?.userId ?? '',
-        showNameplate: config?.lanyard?.showNameplate ?? true,
       },
     };
   } catch (error) {

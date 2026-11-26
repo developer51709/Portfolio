@@ -208,11 +208,6 @@ const CONFIG = {
   lanyard: {
     display: true,
     userId: '1052690741874401360',
-    /**
-     * Show a decorative nameplate banner behind the user info row.
-     * Set to false to hide it.
-     */
-    showNameplate: false,
   },
 
   // Optional Footer. Supports plain text or HTML.
